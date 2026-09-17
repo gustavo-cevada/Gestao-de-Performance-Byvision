@@ -1,0 +1,50 @@
+{
+  "summary": "Full stack testing of Byvision Sales Performance app. Backend: 15/15 pytest tests PASSED (auth VAGNER/admin, RBAC 403, dashboard shape/city filter/KPI math, client detail, meta CRUD w/ persistence, status). Frontend (mobile 390x844): login screen, VAGNER dashboard, KPI cards, progress ring, 21 city chips filter, 59 client rows navigation, client detail with monthly chart & purchases, settings theme toggle (light/dark/system), logout, admin login with admin-button visible, admin metas edit with 59 meta-inputs and save button - ALL working. Admin button correctly hidden for VAGNER (RBAC UI). One minor observation: after logout->login as admin within same page session (SPA), the admin-button did not render until a page refresh; on a fresh session it renders correctly. Non-blocking. Console shows only a benign RN-web warning: 'shadow* style props are deprecated. Use boxShadow'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "dashboard header / auth context",
+        "issue": "After logging out and logging back in as admin in the same SPA session, the admin-button (tune-variant) is not rendered until the page is reloaded. Fresh session works. Likely stale user state in auth context or React Query cache not cleared on logout.",
+        "testID": "admin-button",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "react-native-web shadow props",
+        "issue": "Console warning: 'shadow*' style props are deprecated. Use 'boxShadow'. Non-blocking on web preview but should be migrated for future RN versions."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_byvision_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(LOW) On logout, clear the auth user state and invalidate/reset the React Query cache so that a subsequent login as a different role (e.g. admin) renders role-specific UI (admin-button) without needing a page reload.",
+    "(LOW) Migrate any RN styles using shadow* props to boxShadow to remove the deprecation warning on web."
+  ],
+  "critical_code_review_comments": [
+    "server.py uses @app.on_event('startup'/'shutdown') which are deprecated in modern FastAPI; consider migrating to lifespan handlers (not blocking).",
+    "auth.py: bcrypt/JWT flow implemented correctly, tokens verified, RBAC via require_role works (verified 403 for vendedor on /admin/metas).",
+    "MongoDB _id is correctly excluded in dashboard/clients/metas queries via projection {'_id': 0}."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_byvision_api.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "~95%"
+  },
+  "seed_data_creation": "None. Reused seeded users (admin, VAGNER) and 59 clients synced from DW. Meta update test restores the original value after PUT.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL from frontend/.env EXPO_PUBLIC_BACKEND_URL. Credentials: VAGNER/vagner123 (vendedor, cod 204), admin/admin123. pytest suite at /app/backend/tests/test_byvision_api.py exercises all critical flows including RBAC and persistence via GET-after-PUT. Reference period is set/2026, total meta ~R$87.868. On fresh login KPIs: realizado ~R$24.579,28 / provisionado ~R$47.928,00 / gap R$23.348,72 / 12 de 22 dias uteis / 21 cidades / 59 clientes.",
+  "rca_of_issue": "Minor UI issue: admin-button hidden after logout->login-as-admin flow (no reload). Reproduction: 1) Login as VAGNER, 2) go to settings, 3) tap logout, 4) at login screen enter admin/admin123, 5) after redirect to /dashboard the admin-button is missing. Mitigation: on logout, call setUser(null) AND queryClient.clear()/removeQueries so subsequent login refreshes user context and role-conditional UI. Reloading the page after login resolves it."
+}

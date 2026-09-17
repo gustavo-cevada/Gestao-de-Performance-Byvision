@@ -1,0 +1,182 @@
+{
+  "app_name": "Gestão de Performance de Vendas Byvision",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A pristine, highly readable professional dashboard where crisp typography and strategic green accents drive focus to sales performance.",
+  "color": {
+    "surface": "#ffffff",
+    "onSurface": "#111111",
+    "surfaceSecondary": "#f8f8f8",
+    "onSurfaceSecondary": "#222222",
+    "surfaceTertiary": "#eaeaea",
+    "onSurfaceTertiary": "#444444",
+    "surfaceInverse": "#1a1a1a",
+    "onSurfaceInverse": "#ffffff",
+    "brand": "#00aa79",
+    "onBrand": "#ffffff",
+    "brandPrimary": "#00aa79",
+    "onBrandPrimary": "#ffffff",
+    "brandSecondary": "#008a62",
+    "onBrandSecondary": "#ffffff",
+    "brandTertiary": "#e5f7f2",
+    "onBrandTertiary": "#00aa79",
+    "success": "#00aa79",
+    "onSuccess": "#ffffff",
+    "warning": "#e69500",
+    "onWarning": "#ffffff",
+    "error": "#d93025",
+    "onError": "#ffffff",
+    "info": "#444444",
+    "onInfo": "#ffffff",
+    "border": "#e5e5e5",
+    "borderStrong": "#cccccc",
+    "divider": "#f0f0f0",
+    "muted": "#757575"
+  },
+  "color_dark": {
+    "surface": "#121212",
+    "onSurface": "#f5f5f5",
+    "surfaceSecondary": "#1e1e1e",
+    "onSurfaceSecondary": "#e0e0e0",
+    "surfaceTertiary": "#2c2c2c",
+    "onSurfaceTertiary": "#cccccc",
+    "surfaceInverse": "#ffffff",
+    "onSurfaceInverse": "#121212",
+    "brand": "#00aa79",
+    "onBrand": "#ffffff",
+    "brandPrimary": "#00aa79",
+    "onBrandPrimary": "#ffffff",
+    "brandSecondary": "#00c48d",
+    "onBrandSecondary": "#111111",
+    "brandTertiary": "#003324",
+    "onBrandTertiary": "#00aa79",
+    "success": "#00aa79",
+    "onSuccess": "#ffffff",
+    "warning": "#ffb74d",
+    "onWarning": "#111111",
+    "error": "#ff5252",
+    "onError": "#ffffff",
+    "info": "#e0e0e0",
+    "onInfo": "#121212",
+    "border": "#333333",
+    "borderStrong": "#555555",
+    "divider": "#222222",
+    "muted": "#999999"
+  },
+  "typography": {
+    "displayFontFamily": "Space Grotesk",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical padding, structured grouped content. Avoid dense edge-to-edge text. Maintain strict alignment for numerical data.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "stack_only",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use on sticky headers over scrolling client lists",
+      "Use on bottom floating action panels for the Admin total sum"
+    ],
+    "dont's": [
+      "Never use on list rows or KPI cards"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Login",
+      "purpose": "Secure authentication for Vendedores and Admins.",
+      "states": {
+        "loading": "Spinner over disabled button.",
+        "empty": "N/A",
+        "error": "Inline red text below inputs."
+      },
+      "layout": "Top half uses surfaceInverse to showcase the white Byvision logo prominently. Bottom half has simple email/password inputs with a full-width primary CTA."
+    },
+    {
+      "name": "Performance Dashboard",
+      "purpose": "Primary command center tracking real-time sales performance against monthly goals.",
+      "states": {
+        "loading": "Skeleton UI for KPI cards.",
+        "empty": "No data illustration.",
+        "error": "Error message with 'Tentar novamente' button."
+      },
+      "layout": "Sticky Header with White Byvision Logo (on surfaceInverse/brandPrimary bg container to ensure visibility). Hero Section: Circular progress ring overlaying abstract green background, showing Realizado vs Provisionado vs Meta. Below: 2-col Grid of Metric Cards (Vendas Realizadas, Provisionada, Gap R$, Gap %). Followed by City Filter: horizontal scrollable chips. Below: Client List with Code, Name, City, Faturamento, and an inline horizontal bar chart showing % attainment."
+    },
+    {
+      "name": "Client Detail",
+      "purpose": "Deep dive into a single client's history and performance.",
+      "states": {
+        "loading": "Skeleton UI.",
+        "empty": "No purchase history available illustration.",
+        "error": "Fetch failed error message."
+      },
+      "layout": "Header with back button. Client Info card (CNPJ, contacts). Financial Status card (Days without purchase, Gap). Purchase History list below."
+    },
+    {
+      "name": "Admin Panel",
+      "purpose": "Allows admins to adjust individual client sales goals (metas).",
+      "states": {
+        "loading": "Skeleton rows.",
+        "empty": "No clients found.",
+        "error": "Save failed error toast."
+      },
+      "layout": "List of clients with inline numeric input fields to edit 'Meta'. Fixed glassmorphism bottom bar displaying the 'Soma Total das Metas' and a 'Salvar' primary button."
+    }
+  ],
+  "images": {
+    "logo_placeholder": {
+      "url": "https://images.pexels.com/photos/6586257/pexels-photo-6586257.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "White abstract lens logo representing Byvision"
+    },
+    "hero_bg": {
+      "url": "https://images.unsplash.com/photo-1649861742672-20152f77c1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG1vZGVybiUyMGxpZ2h0JTIwZ3JlZW4lMjBncmFkaWVudCUyMGJhY2tncm91bmQlMjB0ZXh0dXJlfGVufDB8fHx8MTc4OTY3NzE1N3ww&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1708549566274-638eb2d2108b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMG1vZGVybiUyMGxpZ2h0JTIwZ3JlZW4lMjBncmFkaWVudCUyMGJhY2tncm91bmQlMjB0ZXh0dXJlfGVufDB8fHx8MTc4OTY3NzE1N3ww&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract modern light green gradient background texture"
+    },
+    "empty_state": {
+      "url": "https://images.unsplash.com/photo-1596008194705-2091cd6764d4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwyfHxlbXB0eSUyMHN0YXRlJTIwaWxsdXN0cmF0aW9uJTIwc2FsZXMlMjB0YXJnZXQlMjBhY2hpZXZlbWVudHxlbnwwfHx8fDE3ODk2NzcxNTd8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Dart embedded in target center"
+    }
+  },
+  "instructions_to_main_agent": [
+    "IMPLEMENT THEME TOGGLE: Provide a light/dark mode switch. Ensure the `color_dark` palette is strictly followed when in dark mode.",
+    "HANDLE WHITE LOGO: The client explicitly stated the Byvision logo is a 'WHITE PNG'. In light mode, its container (like the header or login top-half) MUST be `surfaceInverse` (near black) or `brandPrimary` (#00aa79) so the white logo is visible.",
+    "NUMERICAL ALIGNMENT: Use 'Space Grotesk' for all numbers (KPIs, currency, percentages) to ensure alignment and readability. Use 'Plus Jakarta Sans' for labels, text, and names.",
+    "INLINE BAR CHARTS: In the client list, render a visual horizontal progress bar for each row showing Faturado vs Meta. Color the bar dynamically based on % attainment (e.g., success color if > 100%, warning if slightly behind, error if severely behind).",
+    "NEGATIVE GAP COLORING: Ensure Gap (R$ and %) automatically recolors to `error` if negative, and `success` if positive.",
+    "ADMIN STICKY CTA: The Admin Panel must have a sticky bottom container (glassmorphism preferred) showing the sum of all metas in real time as the admin edits the inputs."
+  ]
+}
