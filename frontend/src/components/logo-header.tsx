@@ -15,14 +15,12 @@ export function LogoHeader({
   subtitle,
   onBack,
   onMenu,
-  logoRight = false,
   actions = [],
 }: {
   title?: string;
   subtitle?: string;
   onBack?: () => void;
   onMenu?: () => void;
-  logoRight?: boolean;
   actions?: Action[];
 }) {
   const insets = useSafeAreaInsets();
@@ -32,7 +30,7 @@ export function LogoHeader({
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 18 }]} testID="app-header">
       <View style={styles.row}>
-        <View style={[styles.left, logoRight && styles.leftNarrow]}>
+        <View style={styles.left}>
           {onMenu ? (
             <Pressable onPress={onMenu} style={styles.backBtn} hitSlop={10} testID="menu-button">
               <Icon name="menu" size={26} color={colors.onBrandPrimary} />
@@ -46,7 +44,7 @@ export function LogoHeader({
           )}
         </View>
 
-        <View style={[styles.center, logoRight && styles.centerLeft]}>
+        <View style={styles.center}>
           {!!title && (
             <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
               {title}
@@ -59,25 +57,20 @@ export function LogoHeader({
           )}
         </View>
 
-        {logoRight ? (
-          <View style={styles.rightLogoWrap}>
-            <Image source={LOGO} style={styles.logo} contentFit="contain" />
-          </View>
-        ) : (
-          <View style={styles.actions}>
-            {actions.map((a, i) => (
-              <Pressable
-                key={i}
-                onPress={a.onPress}
-                style={styles.actionBtn}
-                hitSlop={8}
-                testID={a.testID}
-              >
-                <Icon name={a.icon} size={22} color={colors.onBrandPrimary} />
-              </Pressable>
-            ))}
-          </View>
-        )}
+        <View style={styles.rightWrap}>
+          {actions.map((a, i) => (
+            <Pressable
+              key={i}
+              onPress={a.onPress}
+              style={styles.actionBtn}
+              hitSlop={8}
+              testID={a.testID}
+            >
+              <Icon name={a.icon} size={22} color={colors.onBrandPrimary} />
+            </Pressable>
+          ))}
+          {(onMenu || onBack) && <Image source={LOGO} style={styles.logo} contentFit="contain" />}
+        </View>
       </View>
     </View>
   );
@@ -90,13 +83,11 @@ const useStyles = makeStyles((c) => ({
     paddingBottom: 22,
   },
   row: { flexDirection: "row", alignItems: "center", minHeight: 52 },
-  left: { width: 104, justifyContent: "center" },
-  leftNarrow: { width: 44 },
+  left: { width: 44, justifyContent: "center" },
   logo: { width: 104, height: 34 },
   backBtn: { width: 38, height: 38, justifyContent: "center", alignItems: "flex-start" },
-  center: { flex: 1, alignItems: "center" },
-  centerLeft: { alignItems: "flex-start", paddingLeft: 4 },
-  rightLogoWrap: { width: 108, alignItems: "flex-end", justifyContent: "center" },
+  center: { flex: 1, alignItems: "flex-start", paddingLeft: 4 },
+  rightWrap: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8 },
   title: {
     color: c.onBrandPrimary,
     fontFamily: fonts.bold,
@@ -109,7 +100,6 @@ const useStyles = makeStyles((c) => ({
     fontSize: 13,
     marginTop: 3,
   },
-  actions: { flexDirection: "row", width: 104, justifyContent: "flex-end", gap: 8 },
   actionBtn: {
     width: 40,
     height: 40,

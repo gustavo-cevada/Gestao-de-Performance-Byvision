@@ -105,7 +105,7 @@ export default function DashboardScreen() {
   if (!user) return <Redirect href="/login" />;
 
   const header = (
-    <LogoHeader onMenu={() => setMenuOpen(true)} title="Painel de Performance" logoRight />
+    <LogoHeader onMenu={() => setMenuOpen(true)} title="Painel de Performance" />
   );
 
   if (isLoading) {
@@ -219,8 +219,8 @@ export default function DashboardScreen() {
 
       {/* KPI grid */}
       <View style={styles.grid}>
-        <KpiCard label={dayMode ? "Vendas do dia" : "Vendas realizadas"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
-        <KpiCard label={dayMode ? "Provisionado do dia" : "Venda provisionada"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
+        <KpiCard label={dayMode ? "Vendas do dia" : "Faturado"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
+        <KpiCard label={dayMode ? "Provisionado do dia" : "Provisionado"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
       </View>
       <View style={styles.grid}>
         <KpiCard
@@ -250,11 +250,11 @@ export default function DashboardScreen() {
               onPress={() => setSort(s.key)}
               style={[
                 styles.sortChip,
-                { borderColor: active ? colors.brand : colors.borderStrong },
+                { borderColor: active ? colors.onSurface : colors.borderStrong },
               ]}
               testID={`sort-${s.key}`}
             >
-              <Text style={[styles.sortText, { color: active ? colors.brand : colors.muted }]}>
+              <Text style={[styles.sortText, { color: active ? colors.onSurface : colors.muted }]}>
                 {s.label}
               </Text>
             </Pressable>
@@ -346,35 +346,27 @@ function HeroBar({
   const styles = useStyles();
   const { colors } = useTheme();
 
-  const ritmo = prev > 0 ? real / prev : real >= 1 ? 1 : 0;
-  const tone = ritmo >= 1 ? colors.success : ritmo >= 0.76 ? colors.warning : colors.error;
-  const fill = Math.max(0, Math.min(1, real)) * 100;
-  const marker = Math.max(0, Math.min(1, prev)) * 100;
+  const tone = real >= 1 ? colors.success : real >= 0.76 ? colors.warning : colors.error;
+  const faturadoW = Math.max(0, Math.min(1, real)) * 100;
+  const prevW = Math.max(0, Math.min(1, prev)) * 100;
   const falta = Math.max(0, meta - realizado);
 
   return (
     <View style={styles.heroBar}>
       <View style={styles.heroPctRow}>
-        <Text style={[styles.heroPct, { color: tone }]}>{`${Math.round(real * 100)}%`}</Text>
-        <Text style={styles.heroPctLabel}>da meta{"\n"}realizado</Text>
+        <View style={styles.heroPctCol}>
+          <Text style={[styles.heroPct, { color: tone }]}>{`${Math.round(real * 100)}%`}</Text>
+          <Text style={styles.heroPctLabel}>Faturado</Text>
+        </View>
+        <View style={[styles.heroPctCol, styles.heroPctColRight]}>
+          <Text style={[styles.heroPct, { color: colors.muted }]}>{`${Math.round(prev * 100)}%`}</Text>
+          <Text style={styles.heroPctLabel}>Previsionado</Text>
+        </View>
       </View>
 
       <View style={styles.heroTrack}>
-        <View style={[styles.heroFill, { width: `${fill}%`, backgroundColor: tone }]} />
-        <View style={[styles.heroMarker, { left: `${marker}%` }]} />
-      </View>
-
-      <View style={styles.heroLegend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.dot, { backgroundColor: tone }]} />
-          <Text style={styles.legendLabel}>Realizado</Text>
-          <Text style={styles.legendValue}>{formatPct(real)}</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.markerDot, { backgroundColor: colors.onSurface }]} />
-          <Text style={styles.legendLabel}>Previsto</Text>
-          <Text style={styles.legendValue}>{formatPct(prev)}</Text>
-        </View>
+        <View style={[styles.heroFillLight, { width: `${prevW}%`, backgroundColor: tone }]} />
+        <View style={[styles.heroFill, { width: `${faturadoW}%`, backgroundColor: tone }]} />
       </View>
 
       <Text style={styles.heroFalta}>
@@ -435,26 +427,21 @@ const useStyles = makeStyles((c) => ({
     padding: 20,
     gap: 14,
   },
-  heroBar: { gap: 12 },
-  heroPctRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  heroPct: { fontFamily: fonts.numBold, fontSize: 40 },
-  heroPctLabel: { fontFamily: fonts.medium, fontSize: 12, color: c.muted },
+  heroBar: { gap: 14 },
+  heroPctRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  heroPctCol: { alignItems: "flex-start" },
+  heroPctColRight: { alignItems: "flex-end" },
+  heroPct: { fontFamily: fonts.numBold, fontSize: 42, lineHeight: 46 },
+  heroPctLabel: { fontFamily: fonts.semibold, fontSize: 13, color: c.muted, marginTop: 0 },
   heroTrack: {
-    height: 18,
+    height: 16,
     borderRadius: 4,
     backgroundColor: c.surfaceTertiary,
     overflow: "hidden",
     position: "relative",
   },
+  heroFillLight: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 0, opacity: 0.3 },
   heroFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 0 },
-  heroMarker: { position: "absolute", top: -3, bottom: -3, width: 3, backgroundColor: c.onSurface, opacity: 0.8 },
-  heroLegend: { flexDirection: "row", gap: 20 },
-  legend: { flexDirection: "row", gap: 20 },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  markerDot: { width: 4, height: 12, borderRadius: 1 },
-  legendLabel: { fontFamily: fonts.regular, fontSize: 12, color: c.muted },
-  legendValue: { fontFamily: fonts.numBold, fontSize: 13, color: c.onSurface },
   heroFalta: { fontFamily: fonts.regular, fontSize: 13, color: c.muted },
   heroFaltaValue: { fontFamily: fonts.numBold, fontSize: 13, color: c.onSurface },
   iconBtn: {

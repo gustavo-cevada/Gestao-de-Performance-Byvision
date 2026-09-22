@@ -336,16 +336,13 @@ async def crm(user=Depends(current_user)):
 
     raw = []
     cur_fat: dict[str, float] = {}
-    prev_fat: dict[str, float] = {}
 
     async for c in db.clients.find({}, {"_id": 0}):
         cod = c["cod_cliente"]
         compras = c.get("compras_f") or []
         fat12 = round(sum(r["v"] for r in compras), 2)
         cur = round(sum(r["v"] for r in compras if r["d"][:7] == ref_month), 2)
-        prev = round(sum(r["v"] for r in compras if r["d"][:7] == prev_month), 2)
         cur_fat[cod] = cur
-        prev_fat[cod] = prev
         raw.append({
             "cod_cliente": cod,
             "nome": _client_label(c),
@@ -361,33 +358,40 @@ async def crm(user=Depends(current_user)):
             "meta": float(metas.get(cod, 0.0)),
         })
 
-    # ranking geral por faturamento 12 meses
+    # ranking geral (posição atual) por faturamento 12 meses
     ordered = sorted(raw, key=lambda x: -x["faturamento_12m"])
     rank_geral = {x["cod_cliente"]: i + 1 for i, x in enumerate(ordered)}
 
-    # ranking do mes atual x mes anterior (movimento)
-    cur_rank = {cod: i + 1 for i, (cod, _) in enumerate(
-        sorted([(k, v) for k, v in cur_fat.items() if v > 0], key=lambda kv: -kv[1]))}
-    prev_rank = {cod: i + 1 for i, (cod, _) in enumerate(
-        sorted([(k, v) for k, v in prev_fat.items() if v > 0], key=lambda kv: -kv[1]))}
+    # ranking anterior: mesma métrica (12m) excluindo o mês de referência,
+    # representa a posição do cliente no fim do mês passado.
+    prev_fat12 = {
+        x["cod_cliente"]: round(x["faturamento_12m"] - cur_fat.get(x["cod_cliente"], 0.0), 2)
+        for x in raw
+    }
+    ordered_prev = sorted(raw, key=lambda x: -prev_fat12[x["cod_cliente"]])
+    prev_rank_geral = {x["cod_cliente"]: i + 1 for i, x in enumerate(ordered_prev)}
 
     for x in raw:
         cod = x["cod_cliente"]
-        x["rank"] = rank_geral.get(cod)
-        c_in, p_in = cod in cur_rank, cod in prev_rank
-        if c_in and p_in:
-            delta = prev_rank[cod] - cur_rank[cod]
-            x["rank_delta"] = delta
-            x["movimento"] = "subiu" if delta > 0 else "desceu" if delta < 0 else "estavel"
-        elif c_in and not p_in:
-            x["rank_delta"] = None
-            x["movimento"] = "novo"
-        elif not c_in and p_in:
-            x["rank_delta"] = None
-            x["movimento"] = "sumiu"
-        else:
+        cur_pos = rank_geral.get(cod)
+        prev_pos = prev_rank_geral.get(cod)
+        x["rank"] = cur_pos
+        curf12 = x["faturamento_12m"]
+        prevf12 = prev_fat12[cod]
+        if curf12 <= 0:
+            # sem faturamento no período -> ranking não relevante
             x["rank_delta"] = None
             x["movimento"] = "parado"
+        elif prevf12 <= 0:
+            # passou a faturar agora (novo no ranking)
+            x["rank_delta"] = None
+            x["movimento"] = "novo"
+        else:
+            # delta = posição_anterior - posição_atual
+            # positivo => subiu (menor número = melhor posição)
+            delta = prev_pos - cur_pos
+            x["rank_delta"] = delta
+            x["movimento"] = "subiu" if delta > 0 else "desceu" if delta < 0 else "estavel"
 
     ordered_out = sorted(raw, key=lambda x: (x["rank"] is None, x["rank"] or 9999))
 

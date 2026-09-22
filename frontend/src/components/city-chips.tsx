@@ -32,14 +32,14 @@ export function CityChips({
             style={[
               styles.chip,
               { backgroundColor: "transparent",
-                borderColor: active ? colors.brand : colors.borderStrong },
+                borderColor: active ? colors.onSurface : colors.borderStrong },
             ]}
             testID={`city-chip-${city}`}
           >
             <Text
               style={[
                 styles.text,
-                { color: active ? colors.brand : colors.muted },
+                { color: active ? colors.onSurface : colors.muted },
               ]}
               numberOfLines={1}
             >

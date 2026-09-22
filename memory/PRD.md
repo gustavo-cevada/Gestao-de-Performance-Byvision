@@ -37,6 +37,12 @@ App mobile (com acesso web/desktop) para vendedores da Byvision acompanharem met
 - Perfil do cliente (/crm/[cod]): avatar, status, cidade, Última compra, Ticket médio, Faturamento acumulado, Faturamento 12 meses, histórico de compras (gráfico) e últimos pedidos.
 - Backend: endpoint /api/crm e campos CRM (status_crm, ticket_medio, faturamento_12m) em /api/clients/{cod}.
 
+## Ajustes recentes (UI + CRM)
+- Dashboard: gráfico "hero" agora mostra dois percentuais lado a lado — Faturado (colorido por regra) e Previsionado (cinza) — com barra segmentada (faturado forte + provisionado claro + restante) e "Falta R$ X para 100% da meta". Cards renomeados: "Faturado" e "Provisionado".
+- Header: logo Byvision fixa no topo de todas as abas (padrão), inclusive telas com botão voltar.
+- Filtros selecionados (chips Ordenar/cidade): cor de seleção usa onSurface (preto no claro / branco no escuro) em vez de verde.
+- CRM: corrigida a lógica de variação de ranking. Antes o rank exibido (12m) divergia do delta (mensal), gerando "#1 caiu N". Agora o delta compara o ranking 12m atual vs. o mesmo ranking excluindo o mês de referência (posição no fim do mês passado): delta = posição_anterior - posição_atual (positivo=subiu). Verificado: #1 nunca "desceu".
+
 ## Backlog
 - P1: adicionar metas para clientes da planilha ausentes na carteira atual (admin).
 - P2: gráfico Pareto de produtos por cliente (endpoint DW disponível).
