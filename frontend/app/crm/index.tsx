@@ -253,7 +253,7 @@ function Row({ item, onPress }: { item: CrmClient; onPress: () => void }) {
       </View>
       <Text style={[styles.tdDias, styles.diasText]}>{item.dias_sem_compra ?? "—"}</Text>
       <View style={styles.tdStatus}>
-        <View style={[styles.statusBadge, { borderColor: stColor }]}>
+        <View style={[styles.statusBadge, { backgroundColor: stColor + "22" }]}>
           <Text style={[styles.statusText, { color: stColor }]}>{st.label.toUpperCase()}</Text>
         </View>
       </View>
@@ -391,7 +391,7 @@ const useStyles = makeStyles((c) => ({
   tdDias: { width: 54, textAlign: "center" },
   diasText: { fontFamily: fonts.numMedium, fontSize: 14, color: c.onSurface },
   tdStatus: { width: 90, alignItems: "center" },
-  statusBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, borderWidth: 1.5, backgroundColor: "transparent" },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   statusText: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.4 },
 
   empty: { alignItems: "center", gap: 10, paddingVertical: 40 },
