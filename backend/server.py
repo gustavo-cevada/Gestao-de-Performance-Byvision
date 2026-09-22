@@ -83,13 +83,55 @@ def _client_label(c: dict) -> str:
     return (c.get("nome_fantasia") or c.get("razao_social") or "-").strip()
 
 
-async def _load_clients_with_meta() -> list[dict]:
+def compute_pace(meta: float, faturado: float, total_bd: int, elapsed_bd: int) -> dict:
+    """Metricas de ritmo com base no andamento dos dias uteis do mes.
+
+    - exp_frac: fracao do mes ja decorrida (dias_decorridos / total)
+    - meta_esperada: quanto o cliente deveria ter faturado ate hoje
+    - pct_ritmo: faturado / meta_esperada (100% = exatamente no ritmo)
+    - real_frac: faturado / meta (atingimento mensal, para a barra)
+    - gap_pct: exp_frac - real_frac (positivo = atrasado)
+    - gap_valor: meta_esperada - faturado (positivo = atrasado)
+    - meta_diaria_necessaria: quanto falta / dias uteis restantes
+    """
+    total_bd = int(total_bd or 0)
+    elapsed_bd = int(elapsed_bd or 0)
+    dias_restantes = max(0, total_bd - elapsed_bd)
+    exp_frac = (elapsed_bd / total_bd) if total_bd else 0.0
+    meta_esperada = round(meta * exp_frac, 2)
+
+    real_frac = (faturado / meta) if meta > 0 else None
+    pct_ritmo = (faturado / meta_esperada) if meta_esperada > 0 else None
+    gap_pct = round(exp_frac - real_frac, 4) if real_frac is not None else None
+    gap_valor = round(meta_esperada - faturado, 2) if meta > 0 else None
+
+    restante = max(0.0, meta - faturado)
+    if meta <= 0:
+        meta_diaria_necessaria = None
+    elif dias_restantes > 0:
+        meta_diaria_necessaria = round(restante / dias_restantes, 2)
+    else:
+        meta_diaria_necessaria = round(restante, 2)
+
+    return {
+        "exp_frac": round(exp_frac, 4),
+        "meta_esperada": meta_esperada,
+        "pct_ritmo": round(pct_ritmo, 4) if pct_ritmo is not None else None,
+        "gap_pct": gap_pct,
+        "gap_valor": gap_valor,
+        "meta_diaria_necessaria": meta_diaria_necessaria,
+        "dias_restantes": dias_restantes,
+    }
+
+
+async def _load_clients_with_meta(total_bd: int = 0, elapsed_bd: int = 0) -> list[dict]:
     metas = {m["cod_cliente"]: m["meta"] async for m in db.metas.find({}, {"_id": 0})}
     out = []
     async for c in db.clients.find({}, {"_id": 0}):
         cod = c["cod_cliente"]
         meta = float(metas.get(cod, 0.0))
         faturado = float(c.get("faturado_mes") or 0.0)
+        pace = compute_pace(meta, faturado, total_bd, elapsed_bd)
         out.append({
             "cod_cliente": cod,
             "nome": _client_label(c),
@@ -102,6 +144,7 @@ async def _load_clients_with_meta() -> list[dict]:
             "pct": round(faturado / meta, 4) if meta > 0 else None,
             "status_comercial": c.get("status_comercial"),
             "dias_sem_compra": c.get("dias_sem_compra"),
+            **pace,
         })
     return out
 
@@ -112,7 +155,9 @@ async def dashboard(
     user=Depends(current_user),
 ):
     period = await get_period()
-    clients = await _load_clients_with_meta()
+    total_bd = period.get("total_dias_uteis") or 0
+    elapsed_bd = period.get("dias_uteis_decorridos") or 0
+    clients = await _load_clients_with_meta(total_bd, elapsed_bd)
 
     cities = sorted({c["cidade"] for c in clients if c["cidade"] and c["cidade"] != "-"})
 
@@ -124,8 +169,6 @@ async def dashboard(
     meta_total = sum(c["meta"] for c in filtered)
     realizado = sum(c["faturado"] for c in filtered)
 
-    total_bd = period.get("total_dias_uteis") or 0
-    elapsed_bd = period.get("dias_uteis_decorridos") or 0
     frac = (elapsed_bd / total_bd) if total_bd else 0.0
 
     provisionado = round(meta_total * frac, 2)
@@ -185,10 +228,16 @@ async def client_detail(cod: str, user=Depends(current_user)):
     faturado = float(c.get("faturado_mes") or 0.0)
     recent = sorted(compras_f, key=lambda r: str(r.get("data_baixa", "")), reverse=True)[:40]
 
+    pace = compute_pace(
+        meta, faturado,
+        period.get("total_dias_uteis") or 0,
+        period.get("dias_uteis_decorridos") or 0,
+    )
+
     return {
         "cliente": {**c, "meta": meta, "faturado": faturado,
                     "pct": round(faturado / meta, 4) if meta > 0 else None,
-                    "nome": _client_label(c)},
+                    "nome": _client_label(c), **pace},
         "compras_mensais": mensal_list,
         "compras_recentes": recent,
         "period": period,

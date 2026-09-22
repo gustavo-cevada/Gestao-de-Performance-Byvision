@@ -57,8 +57,18 @@ export default function ClientDetail() {
   const meta = Number(cl.meta || 0);
   const faturado = Number(cl.faturado || 0);
   const pct = meta > 0 ? faturado / meta : null;
-  const fill = Math.max(0, Math.min(1, pct ?? 0));
-  const barColor = meta <= 0 ? colors.borderStrong : (pct ?? 0) >= 1 ? colors.success : (pct ?? 0) >= 0.7 ? colors.warning : colors.error;
+  const ritmo = cl.pct_ritmo as number | null;
+  const expFrac = Math.max(0, Math.min(1, Number(cl.exp_frac ?? 0)));
+  const realFrac = Math.max(0, Math.min(1, pct ?? 0));
+  const behind = meta > 0 && Number(cl.gap_pct ?? 0) > 0.0001;
+  const barColor =
+    meta <= 0
+      ? colors.borderStrong
+      : (ritmo ?? 0) >= 1
+        ? colors.success
+        : (ritmo ?? 0) >= 0.8
+          ? colors.warning
+          : colors.error;
 
   const maxMonthly = Math.max(1, ...data.compras_mensais.map((m) => m.valor));
 
@@ -80,19 +90,57 @@ export default function ClientDetail() {
           </View>
         </View>
 
-        {/* Meta x Faturado */}
+        {/* Ritmo da meta */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
-            <Text style={styles.cardTitle}>Meta do mês</Text>
-            <Text style={[styles.pctBig, { color: barColor }]}>{pct === null ? "s/ meta" : formatPct(pct)}</Text>
+            <View>
+              <Text style={styles.cardTitle}>Ritmo da meta</Text>
+              <Text style={styles.muted}>
+                {behind ? "Abaixo do ritmo necessário" : meta > 0 ? "No ritmo / adiantado" : "Sem meta definida"}
+              </Text>
+            </View>
+            <Text style={[styles.pctBig, { color: barColor }]}>{ritmo === null ? "s/ meta" : formatPct(ritmo)}</Text>
           </View>
+
           <View style={styles.barTrack}>
-            <View style={[styles.barFill, { width: `${fill * 100}%`, backgroundColor: barColor }]} />
+            {behind && (
+              <View
+                style={[
+                  styles.deficit,
+                  {
+                    left: `${realFrac * 100}%`,
+                    width: `${Math.max(0, (expFrac - realFrac) * 100)}%`,
+                    backgroundColor: barColor,
+                  },
+                ]}
+              />
+            )}
+            <View style={[styles.barFillAbs, { width: `${realFrac * 100}%`, backgroundColor: barColor }]} />
+            {meta > 0 && <View style={[styles.marker, { left: `${expFrac * 100}%`, backgroundColor: colors.onSurface }]} />}
           </View>
+
           <View style={styles.rowBetween}>
             <Metric label="Faturado" value={formatBRL(faturado)} />
-            <Metric label="Meta" value={meta > 0 ? formatBRL(meta) : "—"} align="right" />
+            <Metric label="Ideal hoje" value={meta > 0 ? formatBRL(cl.meta_esperada) : "—"} align="right" />
           </View>
+          <View style={styles.rowBetween}>
+            <Metric label="Meta do mês" value={meta > 0 ? formatBRL(meta) : "—"} />
+            <Metric
+              label="Meta/dia necessária"
+              value={meta > 0 && cl.meta_diaria_necessaria != null ? formatBRL(cl.meta_diaria_necessaria) : "—"}
+              align="right"
+            />
+          </View>
+
+          {meta > 0 && (
+            <View style={[styles.gapChip, { backgroundColor: behind ? "rgba(217,48,37,0.10)" : colors.brandTertiary }]}>
+              <Icon name={behind ? "trending-down" : "trending-up"} size={16} color={behind ? colors.error : colors.success} />
+              <Text style={[styles.gapText, { color: behind ? colors.error : colors.success }]}>
+                {behind ? "Atrasado" : "Adiantado"} {formatPct(Math.abs(Number(cl.gap_pct ?? 0)))} ·{" "}
+                {formatBRL(Math.abs(Number(cl.gap_valor ?? 0)))}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Histórico mensal */}
@@ -211,8 +259,21 @@ const useStyles = makeStyles((c) => ({
   cardTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   pctBig: { fontFamily: fonts.numBold, fontSize: 18 },
-  barTrack: { height: 12, borderRadius: 999, backgroundColor: c.surfaceTertiary, overflow: "hidden" },
+  barTrack: { height: 12, borderRadius: 999, backgroundColor: c.surfaceTertiary, overflow: "hidden", position: "relative" },
   barFill: { height: 12, borderRadius: 999 },
+  barFillAbs: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 999 },
+  deficit: { position: "absolute", top: 0, bottom: 0, opacity: 0.28 },
+  marker: { position: "absolute", top: -2, bottom: -2, width: 2, opacity: 0.7 },
+  gapChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  gapText: { fontFamily: fonts.semibold, fontSize: 13 },
   metricLabel: { fontFamily: fonts.regular, fontSize: 12, color: c.muted },
   metricValue: { fontFamily: fonts.numBold, fontSize: 16, color: c.onSurface },
   chart: { flexDirection: "row", alignItems: "flex-end", gap: 8, height: 130 },
