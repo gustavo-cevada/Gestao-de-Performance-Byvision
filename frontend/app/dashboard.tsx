@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,7 +21,6 @@ import { KpiCard } from "@/src/components/kpi-card";
 import { LogoHeader } from "@/src/components/logo-header";
 import { MenuSheet } from "@/src/components/menu-sheet";
 import { PeriodFilterModal } from "@/src/components/period-filter-modal";
-import { ProgressRing } from "@/src/components/progress-ring";
 import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/context/auth";
 import { dayLong, monthLabel, pad2 } from "@/src/lib/date";
@@ -80,6 +80,7 @@ export default function DashboardScreen() {
   const [sort, setSort] = useState("atingimento_desc");
   const [periodOpen, setPeriodOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [clientQuery, setClientQuery] = useState("");
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["dashboard", city, month, day, sort],
@@ -104,17 +105,7 @@ export default function DashboardScreen() {
   if (!user) return <Redirect href="/login" />;
 
   const header = (
-    <LogoHeader
-      title="Performance"
-      subtitle={user.nome?.split(" ")[0] ? `Olá, ${user.nome.split(" ")[0]}` : "Painel de vendas"}
-      actions={[
-        { icon: "menu" as const, onPress: () => setMenuOpen(true), testID: "menu-button" },
-        { icon: "calendar-range" as const, onPress: () => setPeriodOpen(true), testID: "period-button" },
-        ...(sync.isPending
-          ? []
-          : [{ icon: "refresh" as const, onPress: () => sync.mutate(), testID: "sync-button" }]),
-      ]}
-    />
+    <LogoHeader onMenu={() => setMenuOpen(true)} title="Painel de Performance" logoRight />
   );
 
   if (isLoading) {
@@ -159,6 +150,11 @@ export default function DashboardScreen() {
     setDay(null);
   }
 
+  const cq = clientQuery.trim().toLowerCase();
+  const shownClients = cq
+    ? data.clients.filter((c) => c.nome.toLowerCase().includes(cq) || c.cod_cliente.includes(cq))
+    : data.clients;
+
   const listHeader = (
     <View style={styles.listHeader}>
       {sync.isPending && (
@@ -180,21 +176,22 @@ export default function DashboardScreen() {
         {filterActive && (
           <Pressable style={styles.clearBtn} onPress={clearFilter} testID="clear-filter-button">
             <Icon name="close-circle" size={16} color={colors.onError} />
-            <Text style={styles.clearText}>Limpar filtro</Text>
+            <Text style={styles.clearText}>Limpar</Text>
           </Pressable>
         )}
+        <Pressable style={styles.iconBtn} onPress={() => sync.mutate()} testID="sync-button">
+          <Icon name="refresh" size={20} color={colors.brandPrimary} />
+        </Pressable>
       </View>
 
-      {/* Hero */}
+      {/* Hero — barra horizontal de atingimento */}
       <View style={styles.hero}>
-        <ProgressRing
-          realizado={k.pct_atingimento_realizado}
-          provisionado={k.pct_atingimento_provisionado}
+        <HeroBar
+          real={k.pct_atingimento_realizado}
+          prev={k.pct_atingimento_provisionado}
+          meta={k.meta_vendas}
+          realizado={k.vendas_realizadas}
         />
-        <View style={styles.legend}>
-          <LegendDot color={colorForReal(k, colors)} label="Realizado" value={formatPct(k.pct_atingimento_realizado)} />
-          <LegendDot color={colors.info} label={dayMode ? "Alvo dia" : "Previsto"} value={formatPct(k.pct_atingimento_provisionado)} />
-        </View>
         <View style={styles.metaBox}>
           <Text style={styles.metaLabel}>{dayMode ? "META DO DIA" : "META DE VENDAS DO MÊS"}</Text>
           <View style={styles.metaValueBox}>
@@ -251,10 +248,13 @@ export default function DashboardScreen() {
             <Pressable
               key={s.key}
               onPress={() => setSort(s.key)}
-              style={[styles.sortChip, { backgroundColor: active ? colors.surfaceInverse : colors.surfaceTertiary }]}
+              style={[
+                styles.sortChip,
+                { borderColor: active ? colors.brand : colors.borderStrong },
+              ]}
               testID={`sort-${s.key}`}
             >
-              <Text style={[styles.sortText, { color: active ? colors.onSurfaceInverse : colors.onSurfaceTertiary }]}>
+              <Text style={[styles.sortText, { color: active ? colors.brand : colors.muted }]}>
                 {s.label}
               </Text>
             </Pressable>
@@ -271,7 +271,7 @@ export default function DashboardScreen() {
     <View style={styles.screen}>
       {header}
       <FlatList
-        data={data.clients}
+        data={shownClients}
         keyExtractor={(c) => c.cod_cliente}
         renderItem={({ item }) => (
           <ClientRow item={item} onPress={() => router.push(`/client/${item.cod_cliente}`)} />
@@ -280,7 +280,24 @@ export default function DashboardScreen() {
           <>
             {listHeader}
             <CityChips cities={data.cities} selected={city} onSelect={setCity} />
-            <Text style={styles.clientsTitle}>{`Clientes (${data.total_clientes})`}</Text>
+            <View style={styles.clientSearch}>
+              <Icon name="magnify" size={20} color={colors.muted} />
+              <TextInput
+                value={clientQuery}
+                onChangeText={setClientQuery}
+                placeholder="Localizar cliente por nome ou código…"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                style={styles.clientSearchInput}
+                testID="client-search"
+              />
+              {!!clientQuery && (
+                <Pressable onPress={() => setClientQuery("")} hitSlop={8} testID="client-search-clear">
+                  <Icon name="close-circle" size={18} color={colors.muted} />
+                </Pressable>
+              )}
+            </View>
+            <Text style={styles.clientsTitle}>{`Clientes (${shownClients.length})`}</Text>
           </>
         }
         ListEmptyComponent={
@@ -315,21 +332,54 @@ export default function DashboardScreen() {
   );
 }
 
-function colorForReal(k: Dashboard["kpi"], colors: any) {
-  return k.pct_atingimento_realizado >= k.pct_atingimento_provisionado
-    ? colors.success
-    : k.pct_atingimento_realizado >= k.pct_atingimento_provisionado * 0.75
-      ? colors.warning
-      : colors.error;
-}
-
-function LegendDot({ color, label, value }: { color: string; label: string; value: string }) {
+function HeroBar({
+  real,
+  prev,
+  meta,
+  realizado,
+}: {
+  real: number;
+  prev: number;
+  meta: number;
+  realizado: number;
+}) {
   const styles = useStyles();
+  const { colors } = useTheme();
+
+  const ritmo = prev > 0 ? real / prev : real >= 1 ? 1 : 0;
+  const tone = ritmo >= 1 ? colors.success : ritmo >= 0.76 ? colors.warning : colors.error;
+  const fill = Math.max(0, Math.min(1, real)) * 100;
+  const marker = Math.max(0, Math.min(1, prev)) * 100;
+  const falta = Math.max(0, meta - realizado);
+
   return (
-    <View style={styles.legendItem}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
-      <Text style={styles.legendLabel}>{label}</Text>
-      <Text style={styles.legendValue}>{value}</Text>
+    <View style={styles.heroBar}>
+      <View style={styles.heroPctRow}>
+        <Text style={[styles.heroPct, { color: tone }]}>{`${Math.round(real * 100)}%`}</Text>
+        <Text style={styles.heroPctLabel}>da meta{"\n"}realizado</Text>
+      </View>
+
+      <View style={styles.heroTrack}>
+        <View style={[styles.heroFill, { width: `${fill}%`, backgroundColor: tone }]} />
+        <View style={[styles.heroMarker, { left: `${marker}%` }]} />
+      </View>
+
+      <View style={styles.heroLegend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.dot, { backgroundColor: tone }]} />
+          <Text style={styles.legendLabel}>Realizado</Text>
+          <Text style={styles.legendValue}>{formatPct(real)}</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.markerDot, { backgroundColor: colors.onSurface }]} />
+          <Text style={styles.legendLabel}>Previsto</Text>
+          <Text style={styles.legendValue}>{formatPct(prev)}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.heroFalta}>
+        Falta <Text style={styles.heroFaltaValue}>{formatBRL(falta)}</Text> para 100% da meta
+      </Text>
     </View>
   );
 }
@@ -383,14 +433,53 @@ const useStyles = makeStyles((c) => ({
     borderWidth: 1,
     borderColor: c.border,
     padding: 20,
-    alignItems: "center",
     gap: 14,
   },
+  heroBar: { gap: 12 },
+  heroPctRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  heroPct: { fontFamily: fonts.numBold, fontSize: 40 },
+  heroPctLabel: { fontFamily: fonts.medium, fontSize: 12, color: c.muted },
+  heroTrack: {
+    height: 18,
+    borderRadius: 4,
+    backgroundColor: c.surfaceTertiary,
+    overflow: "hidden",
+    position: "relative",
+  },
+  heroFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 0 },
+  heroMarker: { position: "absolute", top: -3, bottom: -3, width: 3, backgroundColor: c.onSurface, opacity: 0.8 },
+  heroLegend: { flexDirection: "row", gap: 20 },
   legend: { flexDirection: "row", gap: 20 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   dot: { width: 10, height: 10, borderRadius: 5 },
+  markerDot: { width: 4, height: 12, borderRadius: 1 },
   legendLabel: { fontFamily: fonts.regular, fontSize: 12, color: c.muted },
   legendValue: { fontFamily: fonts.numBold, fontSize: 13, color: c.onSurface },
+  heroFalta: { fontFamily: fonts.regular, fontSize: 13, color: c.muted },
+  heroFaltaValue: { fontFamily: fonts.numBold, fontSize: 13, color: c.onSurface },
+  iconBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surfaceSecondary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  clientSearch: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: c.surfaceTertiary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: c.border,
+    paddingHorizontal: 14,
+    height: 48,
+    marginTop: 10,
+  },
+  clientSearchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 15, color: c.onSurface },
   metaBox: { alignItems: "center", gap: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: c.divider, width: "100%" },
   metaLabel: { fontFamily: fonts.medium, fontSize: 11, color: c.muted, letterSpacing: 0.5, marginTop: 8 },
   metaValueBox: {
@@ -416,7 +505,7 @@ const useStyles = makeStyles((c) => ({
   grid: { flexDirection: "row", gap: 12 },
   sectionTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface, marginTop: 4 },
   sortRow: { gap: 8, paddingVertical: 2 },
-  sortChip: { height: 36, flexShrink: 0, paddingHorizontal: 14, borderRadius: 999, justifyContent: "center", alignItems: "center" },
+  sortChip: { height: 36, flexShrink: 0, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1.5, justifyContent: "center", alignItems: "center" },
   sortText: { fontFamily: fonts.semibold, fontSize: 13 },
   clientsTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface, marginTop: 14, marginBottom: 2 },
   empty: { alignItems: "center", gap: 10, paddingVertical: 40 },

@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only iteration validating visual refinements + color rule (gabarito). Executed on Expo web preview at 390x844 with VAGNER/vagner123. ALL 11 acceptance criteria PASS. Console shows only the previously reported non-blocking 'shadow*' RN-web deprecation warning; no errors, no red screen.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web shadow props", "issue": "Non-blocking console warning 'shadow* style props are deprecated. Use boxShadow.' persists (same as iteration 2). Not tied to this iteration's changes."}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_3.json"],
+  "action_items": [
+    "(LOW) Migrate remaining shadow* RN styles to boxShadow to silence the RN-web deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "logo-header.tsx: hamburger renders when onMenu is supplied (dashboard passes it), title uses adjustsFontSizeToFit + minimumFontScale 0.75 and numberOfLines 1; logoRight branch renders Byvision logo on the right and no 'Olá' text anywhere. Verified header text is exactly 'menu-icon\\nPainel de Performance'.",
+    "dashboard.tsx HeroBar: computes tone from ritmo (real/prev) using thresholds >=1 success, >=0.76 warning, else error; renders horizontal heroTrack + heroFill + heroMarker; legend shows Realizado/Previsto with %; footer text 'Falta <BRL> para 100% da meta'. Matches spec.",
+    "dashboard.tsx: clientQuery filters by nome (lowercase) OR cod_cliente.includes(cq); TextInput has testID 'client-search' and clear button testID 'client-search-clear'. Verified: 'SUP' filters to 0 clients (no match in current dataset), clearing restores full list.",
+    "city-chips.tsx: chip uses backgroundColor:'transparent' + borderWidth 1.5, border color brand when active else borderStrong. Verified computed bg rgba(0,0,0,0) and active border rgb(0,170,121).",
+    "dashboard.tsx sortChip: same outline pattern; active border color equals brand.",
+    "client-row.tsx: toneColor derived from ritmo with 0.76/1.0 thresholds; badge backgroundColor and gapText color BOTH use toneColor -> visually coherent. Verified from live DOM: rows with 32%/59%/75% -> red (rgb(217,48,37)) badge AND red gap text; row with 78% -> orange (rgb(230,149,0)) badge AND orange gap text; rows with >=100% -> green (rgb(0,170,121)) both. Rule 0-75 RED / 76-99 YELLOW / >=100 GREEN confirmed exactly.",
+    "client/[cod].tsx: label 'Previsionado' (replaces 'Ideal hoje') confirmed; barColor uses same threshold rule (ritmo-based); pctBig color uses barColor.",
+    "bar-chart.tsx: bar backgroundColor uses colors.onSurface (neutral) with opacity variation, NOT success/green. Screenshot confirms bars render in neutral gray. Tap on bar-<mes> shows tooltip 'Março 2026 R$ 114,90' as verified."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not tested per request)", "frontend": "100% for acceptance criteria"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 3 verified all visual refinements. Reusable testIDs: login-identifier-input, login-password-input, login-submit-button, app-header, menu-button, menu-crm, menu-settings, menu-logout, period-pill, sync-button, clear-filter-button, client-search, client-search-clear, city-chip-<CITY>, sort-<key> (atingimento_desc|atingimento_asc|faturado_desc|faturado_asc), client-row-<cod>, bar-<YYYY-MM>. Color rule mapping (verified): pct_ritmo <=0.75 => rgb(217,48,37) red; 0.76-0.99 => rgb(230,149,0) yellow/orange; >=1.00 => rgb(0,170,121) green. Header text pattern: '<hamburger-glyph>\\nPainel de Performance' (no 'Olá').",
+  "rca_of_issue": "Not applicable - verification iteration. No regressions detected."
+}

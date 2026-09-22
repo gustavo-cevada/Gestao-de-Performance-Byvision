@@ -67,7 +67,7 @@ export default function ClientDetail() {
       ? colors.borderStrong
       : (ritmo ?? 0) >= 1
         ? colors.success
-        : (ritmo ?? 0) >= 0.8
+        : (ritmo ?? 0) >= 0.76
           ? colors.warning
           : colors.error;
 
@@ -120,7 +120,7 @@ export default function ClientDetail() {
 
           <View style={styles.rowBetween}>
             <Metric label="Faturado" value={formatBRL(faturado)} />
-            <Metric label="Ideal hoje" value={meta > 0 ? formatBRL(cl.meta_esperada) : "—"} align="right" />
+            <Metric label="Previsionado" value={meta > 0 ? formatBRL(cl.meta_esperada) : "—"} align="right" />
           </View>
           <View style={styles.rowBetween}>
             <Metric label="Meta do mês" value={meta > 0 ? formatBRL(meta) : "—"} />
@@ -132,9 +132,9 @@ export default function ClientDetail() {
           </View>
 
           {meta > 0 && (
-            <View style={[styles.gapChip, { backgroundColor: behind ? "rgba(217,48,37,0.10)" : colors.brandTertiary }]}>
-              <Icon name={behind ? "trending-down" : "trending-up"} size={16} color={behind ? colors.error : colors.success} />
-              <Text style={[styles.gapText, { color: behind ? colors.error : colors.success }]}>
+            <View style={[styles.gapChip, { backgroundColor: colors.surfaceTertiary }]}>
+              <Icon name={behind ? "trending-down" : "trending-up"} size={16} color={behind ? barColor : colors.success} />
+              <Text style={[styles.gapText, { color: behind ? barColor : colors.success }]}>
                 {behind ? "Atrasado" : "Adiantado"} {formatPct(Math.abs(Number(cl.gap_pct ?? 0)))} ·{" "}
                 {formatBRL(Math.abs(Number(cl.gap_valor ?? 0)))}
               </Text>

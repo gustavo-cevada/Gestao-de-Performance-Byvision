@@ -31,7 +31,7 @@ export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => 
     ? colors.borderStrong
     : ritmo >= 1
       ? colors.success
-      : ritmo >= 0.8
+      : ritmo >= 0.76
         ? colors.warning
         : colors.error;
 
@@ -84,13 +84,13 @@ export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => 
 
       {hasMeta && (
         <View style={styles.gapLine}>
-          <View style={[styles.gapChip, { backgroundColor: behind ? "rgba(217,48,37,0.10)" : colors.brandTertiary }]}>
+          <View style={[styles.gapChip, { backgroundColor: colors.surfaceTertiary }]}>
             <Icon
               name={behind ? "trending-down" : "trending-up"}
               size={14}
-              color={behind ? colors.error : colors.success}
+              color={behind ? toneColor : colors.success}
             />
-            <Text style={[styles.gapText, { color: behind ? colors.error : colors.success }]} numberOfLines={1}>
+            <Text style={[styles.gapText, { color: behind ? toneColor : colors.success }]} numberOfLines={1}>
               {behind ? "Atrasado" : "Adiantado"} {formatPct(Math.abs(item.gap_pct ?? 0))} ·{" "}
               {formatBRL(Math.abs(item.gap_valor ?? 0))}
             </Text>

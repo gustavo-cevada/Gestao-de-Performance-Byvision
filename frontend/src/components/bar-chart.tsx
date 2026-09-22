@@ -53,13 +53,13 @@ export function BarChart({ data }: { data: MonthPoint[] }) {
                     styles.bar,
                     {
                       height: `${(m.valor / max) * 100}%`,
-                      backgroundColor: active ? colors.brand : colors.brandPrimary,
-                      opacity: selected == null || active ? 1 : 0.45,
+                      backgroundColor: colors.onSurface,
+                      opacity: selected == null ? 0.75 : active ? 1 : 0.3,
                     },
                   ]}
                 />
               </View>
-              <Text style={[styles.label, active && { color: colors.brand, fontFamily: fonts.numBold }]}>
+              <Text style={[styles.label, active && { color: colors.onSurface, fontFamily: fonts.numBold }]}>
                 {m.mes.slice(5)}
               </Text>
             </Pressable>
@@ -74,15 +74,15 @@ const useStyles = makeStyles((c) => ({
   empty: { fontFamily: fonts.regular, fontSize: 13, color: c.muted },
   tooltip: {
     alignSelf: "flex-start",
-    backgroundColor: c.brandTertiary,
+    backgroundColor: c.surfaceTertiary,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     minWidth: 140,
   },
   tooltipEmpty: { backgroundColor: c.surfaceTertiary },
-  tooltipMonth: { fontFamily: fonts.semibold, fontSize: 12, color: c.onBrandTertiary },
-  tooltipValue: { fontFamily: fonts.numBold, fontSize: 17, color: c.onBrandTertiary },
+  tooltipMonth: { fontFamily: fonts.semibold, fontSize: 12, color: c.onSurfaceSecondary },
+  tooltipValue: { fontFamily: fonts.numBold, fontSize: 17, color: c.onSurface },
   tooltipHint: { fontFamily: fonts.regular, fontSize: 12, color: c.muted },
   chart: { flexDirection: "row", alignItems: "stretch", gap: 6, height: 140 },
   col: { flex: 1, alignItems: "center", justifyContent: "flex-end", gap: 6 },

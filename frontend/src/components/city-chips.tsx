@@ -31,15 +31,15 @@ export function CityChips({
             onPress={() => onSelect(city)}
             style={[
               styles.chip,
-              { backgroundColor: active ? colors.brandPrimary : colors.surfaceTertiary,
-                borderColor: active ? colors.brandPrimary : colors.border },
+              { backgroundColor: "transparent",
+                borderColor: active ? colors.brand : colors.borderStrong },
             ]}
             testID={`city-chip-${city}`}
           >
             <Text
               style={[
                 styles.text,
-                { color: active ? colors.onBrandPrimary : colors.onSurfaceTertiary },
+                { color: active ? colors.brand : colors.muted },
               ]}
               numberOfLines={1}
             >
@@ -59,7 +59,7 @@ const useStyles = makeStyles((c) => ({
     flexShrink: 0,
     paddingHorizontal: 16,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 1.5,
     justifyContent: "center",
     alignItems: "center",
   },
