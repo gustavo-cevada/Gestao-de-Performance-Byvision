@@ -20,8 +20,14 @@ App mobile (com acesso web/desktop) para vendedores da Byvision acompanharem met
 - Configurações: tema claro/escuro/sistema, logout.
 - Sync manual (botão atualizar) com a API DW.
 
+### Iteração 2 (2026-06)
+- Lógica de RITMO por dias úteis em cada cliente (meta esperada até hoje, % no ritmo, barra com marcador do "ideal hoje" + faixa de déficit, gap % e R$, meta/dia necessária).
+- Ordenação padrão por maior atingimento; opções: maior/menor atingimento, mais/menos vendido.
+- Filtro de período: por mês (recalcula meta/vendas do mês) e por dia específico (resume tudo ao dia: meta do dia, provisionado do dia, gap), com botão "Limpar filtro".
+- "Meta do dia" (quanto vender por dia útil restante) exibida no hero.
+- Sync agora guarda janela de 12 meses de compras faturadas para filtro por mês/dia instantâneo.
+
 ## Backlog
-- P1: permitir configurar manualmente o total de dias úteis / mês de referência.
 - P1: adicionar metas para clientes da planilha ausentes na carteira atual (admin).
 - P2: gráfico Pareto de produtos por cliente (endpoint DW disponível).
 - P2: migrar estilos shadow* → boxShadow (web).

@@ -39,15 +39,22 @@ async def run_sync() -> dict:
         clientes = await asyncio.to_thread(dw.get_clientes)
         cods = [str(c.get("cod_cliente")) for c in clientes]
 
-        faturamento = await asyncio.to_thread(
-            dw.faturamento_todos, cods, period["month_start"], period["as_of"]
-        )
+        # janela de 12 meses de compras faturadas (para filtro por mes/dia)
+        ry, rm = int(period["ref_year"]), int(period["ref_month"])
+        wy = ry - 1
+        window_start = f"{wy}-{rm:02d}-01"
+        ref_prefix = f"{ry}-{rm:02d}"
+
+        janelas = await asyncio.to_thread(dw.compras_window, cods, window_start)
 
         for c in clientes:
             cod = str(c.get("cod_cliente"))
+            compras_f = janelas.get(cod, [])
+            faturado_mes = round(sum(r["v"] for r in compras_f if r["d"][:7] == ref_prefix), 2)
             doc = dict(c)
             doc["cod_cliente"] = cod
-            doc["faturado_mes"] = faturamento.get(cod, 0.0)
+            doc["faturado_mes"] = faturado_mes
+            doc["compras_f"] = compras_f
             await db.clients.update_one(
                 {"cod_cliente": cod}, {"$set": doc}, upsert=True
             )
@@ -124,14 +131,33 @@ def compute_pace(meta: float, faturado: float, total_bd: int, elapsed_bd: int) -
     }
 
 
-async def _load_clients_with_meta(total_bd: int = 0, elapsed_bd: int = 0) -> list[dict]:
+async def _load_clients_scoped(
+    sel_month: str, day: str | None, total_bd: int, elapsed_bd: int
+) -> tuple[list[dict], set[str]]:
+    """Carrega clientes com faturado e metricas para o escopo (mes ou dia).
+
+    Retorna (clientes, meses_disponiveis).
+    """
     metas = {m["cod_cliente"]: m["meta"] async for m in db.metas.find({}, {"_id": 0})}
-    out = []
+    out: list[dict] = []
+    months: set[str] = set()
+
     async for c in db.clients.find({}, {"_id": 0}):
         cod = c["cod_cliente"]
-        meta = float(metas.get(cod, 0.0))
-        faturado = float(c.get("faturado_mes") or 0.0)
-        pace = compute_pace(meta, faturado, total_bd, elapsed_bd)
+        meta_mensal = float(metas.get(cod, 0.0))
+        compras = c.get("compras_f") or []
+        for r in compras:
+            months.add(r["d"][:7])
+
+        if day:
+            faturado = round(sum(r["v"] for r in compras if r["d"] == day), 2)
+            meta_scope = round(meta_mensal / total_bd, 2) if total_bd else 0.0
+            pace = compute_pace(meta_scope, faturado, 1, 1)
+        else:
+            faturado = round(sum(r["v"] for r in compras if r["d"][:7] == sel_month), 2)
+            meta_scope = meta_mensal
+            pace = compute_pace(meta_scope, faturado, total_bd, elapsed_bd)
+
         out.append({
             "cod_cliente": cod,
             "nome": _client_label(c),
@@ -139,28 +165,71 @@ async def _load_clients_with_meta(total_bd: int = 0, elapsed_bd: int = 0) -> lis
             "cnpj_cpf": c.get("cnpj_cpf"),
             "cidade": (c.get("cidade") or "-").strip(),
             "uf": c.get("uf"),
-            "meta": meta,
+            "meta": meta_scope,
+            "meta_mensal": meta_mensal,
             "faturado": faturado,
-            "pct": round(faturado / meta, 4) if meta > 0 else None,
+            "pct": round(faturado / meta_scope, 4) if meta_scope > 0 else None,
             "status_comercial": c.get("status_comercial"),
             "dias_sem_compra": c.get("dias_sem_compra"),
             **pace,
         })
-    return out
+    return out, months
+
+
+def _sort_clients(clients: list[dict], sort: str) -> list[dict]:
+    NEG = -1e18
+    POS = 1e18
+    if sort == "atingimento_asc":
+        return sorted(clients, key=lambda c: (c["pct_ritmo"] if c["pct_ritmo"] is not None else POS, c["nome"]))
+    if sort == "faturado_desc":
+        return sorted(clients, key=lambda c: -c["faturado"])
+    if sort == "faturado_asc":
+        return sorted(clients, key=lambda c: c["faturado"])
+    # default: atingimento_desc (meta mais atingida primeiro)
+    return sorted(clients, key=lambda c: -(c["pct_ritmo"] if c["pct_ritmo"] is not None else NEG))
 
 
 @api.get("/dashboard")
 async def dashboard(
     city: str | None = Query(default=None),
+    month: str | None = Query(default=None),   # "YYYY-MM"
+    day: str | None = Query(default=None),      # "YYYY-MM-DD"
+    sort: str = Query(default="atingimento_desc"),
     user=Depends(current_user),
 ):
     period = await get_period()
-    total_bd = period.get("total_dias_uteis") or 0
-    elapsed_bd = period.get("dias_uteis_decorridos") or 0
-    clients = await _load_clients_with_meta(total_bd, elapsed_bd)
+    ry = int(period.get("ref_year") or datetime.now().year)
+    rm = int(period.get("ref_month") or datetime.now().month)
+    ref_month = f"{ry}-{rm:02d}"
+
+    sel_month = month or ref_month
+    try:
+        sy, sm = int(sel_month[:4]), int(sel_month[5:7])
+    except (ValueError, IndexError):
+        sel_month, sy, sm = ref_month, ry, rm
+
+    # dia precisa pertencer ao mes selecionado
+    if day and day[:7] != sel_month:
+        day = None
+
+    total_bd = dw.business_days_in_month(sy, sm)
+    as_of_str = str(period.get("as_of") or "")[:10]
+    try:
+        as_of = datetime.strptime(as_of_str, "%Y-%m-%d").date()
+    except ValueError:
+        as_of = datetime.now().date()
+
+    if sel_month == ref_month:
+        elapsed_bd = int(period.get("dias_uteis_decorridos") or 0)
+    elif sel_month < ref_month:
+        elapsed_bd = total_bd  # mes passado (completo)
+    else:
+        elapsed_bd = 0  # mes futuro
+
+    day_mode = bool(day)
+    clients, months = await _load_clients_scoped(sel_month, day, total_bd, elapsed_bd)
 
     cities = sorted({c["cidade"] for c in clients if c["cidade"] and c["cidade"] != "-"})
-
     if city and city != "TODAS":
         filtered = [c for c in clients if c["cidade"] == city]
     else:
@@ -169,18 +238,43 @@ async def dashboard(
     meta_total = sum(c["meta"] for c in filtered)
     realizado = sum(c["faturado"] for c in filtered)
 
-    frac = (elapsed_bd / total_bd) if total_bd else 0.0
+    if day_mode:
+        frac = 1.0
+        provisionado = round(meta_total, 2)  # alvo do dia
+    else:
+        frac = (elapsed_bd / total_bd) if total_bd else 0.0
+        provisionado = round(meta_total * frac, 2)
 
-    provisionado = round(meta_total * frac, 2)
     pct_prov = round(provisionado / meta_total, 4) if meta_total else 0.0
     pct_real = round(realizado / meta_total, 4) if meta_total else 0.0
     gap_valor = round(provisionado - realizado, 2)
     gap_pct = round(pct_prov - pct_real, 4)
 
-    filtered_sorted = sorted(filtered, key=lambda c: (-c["faturado"], -c["meta"]))
+    dias_restantes = max(0, total_bd - elapsed_bd)
+    restante = max(0.0, meta_total - realizado)
+    if day_mode:
+        meta_do_dia = round(meta_total, 2)
+    elif dias_restantes > 0:
+        meta_do_dia = round(restante / dias_restantes, 2)
+    else:
+        meta_do_dia = round(restante, 2)
+
+    filtered_sorted = _sort_clients(filtered, sort)
+    months_list = sorted(months, reverse=True)
 
     return {
         "period": period,
+        "scope": {
+            "month": sel_month,
+            "day": day,
+            "day_mode": day_mode,
+            "total_dias_uteis": total_bd,
+            "dias_uteis_decorridos": elapsed_bd,
+            "dias_uteis_restantes": dias_restantes,
+            "is_ref_month": sel_month == ref_month,
+        },
+        "months": months_list,
+        "sort": sort,
         "kpi": {
             "meta_vendas": round(meta_total, 2),
             "vendas_realizadas": round(realizado, 2),
@@ -190,6 +284,7 @@ async def dashboard(
             "pct_atingimento_realizado": pct_real,
             "gap_pct": gap_pct,
             "fracao_periodo": round(frac, 4),
+            "meta_do_dia": meta_do_dia,
         },
         "cities": cities,
         "selected_city": city or "TODAS",
@@ -258,7 +353,17 @@ class MetasBulk(BaseModel):
 
 @api.get("/admin/metas")
 async def admin_list_metas(user=Depends(require_role("admin"))):
-    clients = await _load_clients_with_meta()
+    metas = {m["cod_cliente"]: m["meta"] async for m in db.metas.find({}, {"_id": 0})}
+    clients = []
+    async for c in db.clients.find({}, {"_id": 0, "compras_f": 0}):
+        cod = c["cod_cliente"]
+        clients.append({
+            "cod_cliente": cod,
+            "nome": _client_label(c),
+            "cidade": (c.get("cidade") or "-").strip(),
+            "meta": float(metas.get(cod, 0.0)),
+            "faturado": float(c.get("faturado_mes") or 0.0),
+        })
     clients_sorted = sorted(clients, key=lambda c: c["nome"])
     total = sum(c["meta"] for c in clients_sorted)
     return {"total_meta": round(total, 2), "clients": clients_sorted}

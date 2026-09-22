@@ -99,6 +99,44 @@ def faturamento_todos(cods: list[str], desde: str, ate: str) -> dict:
     return result
 
 
+def _compras_f_list(cod: str, desde: str) -> list[dict]:
+    """Lista de compras FATURADAS [{d, v}] desde uma data (janela)."""
+    out = []
+    for row in get_compras(cod, desde):
+        if str(row.get("situacao_pedido")) != "F":
+            continue
+        d = str(row.get("data_baixa", ""))[:10]
+        if not d:
+            continue
+        out.append({"d": d, "v": float(row.get("valor") or 0)})
+    return out
+
+
+def compras_window(cods: list[str], desde: str) -> dict:
+    """Busca em paralelo a janela de compras faturadas de varios clientes."""
+    result: dict[str, list] = {}
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {pool.submit(_compras_f_list, c, desde): c for c in cods}
+        for fut in futures:
+            cod = futures[fut]
+            try:
+                result[cod] = fut.result()
+            except Exception:  # noqa: BLE001
+                result[cod] = []
+    return result
+
+
+def business_days_in_month(year: int, month: int) -> int:
+    start = date(year, month, 1)
+    end = (date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)) - timedelta(days=1)
+    return _business_days(start, end)
+
+
+def business_days_until(year: int, month: int, ate: date) -> int:
+    start = date(year, month, 1)
+    return _business_days(start, ate)
+
+
 # ---------------------------------------------------------------------------
 # Dias uteis
 # ---------------------------------------------------------------------------
