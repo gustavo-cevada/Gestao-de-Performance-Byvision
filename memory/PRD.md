@@ -27,6 +27,16 @@ App mobile (com acesso web/desktop) para vendedores da Byvision acompanharem met
 - "Meta do dia" (quanto vender por dia útil restante) exibida no hero.
 - Sync agora guarda janela de 12 meses de compras faturadas para filtro por mês/dia instantâneo.
 
+### Iteração 3 (2026-06) — CRM & Ranking
+- Menu sanduíche (drawer) no cabeçalho do painel: navega para Painel, CRM & Ranking, Gestão de Metas (admin), Configurações, Sair.
+- Nova aba CRM (/crm): ranking geral dos clientes por faturamento 12 meses, com acompanhamento de movimento (subiu/desceu/sumiu/novo comparando mês atual x anterior).
+- Status derivado: ATIVO / PRÉ-INATIVO (>=45 dias sem compra) / INATIVO (status INATIVO ou >=90 dias).
+- Cards resumo: Total, Ativos, Pré-inativos, Inativos (com %).
+- Filtros: Cidade, Cliente (código), Status; busca por nome, cidade ou CNPJ (só dígitos).
+- Tabela: Cliente (nome + #código + rank/movimento), Cidade, dias s/ compra, status.
+- Perfil do cliente (/crm/[cod]): avatar, status, cidade, Última compra, Ticket médio, Faturamento acumulado, Faturamento 12 meses, histórico de compras (gráfico) e últimos pedidos.
+- Backend: endpoint /api/crm e campos CRM (status_crm, ticket_medio, faturamento_12m) em /api/clients/{cod}.
+
 ## Backlog
 - P1: adicionar metas para clientes da planilha ausentes na carteira atual (admin).
 - P2: gráfico Pareto de produtos por cliente (endpoint DW disponível).

@@ -1,6 +1,7 @@
 """Gestao de Performance de Vendas Byvision - Backend."""
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
@@ -88,6 +89,36 @@ async def get_period() -> dict:
 # ---------------------------------------------------------------------------
 def _client_label(c: dict) -> str:
     return (c.get("nome_fantasia") or c.get("razao_social") or "-").strip()
+
+
+def only_digits(s) -> str:
+    return re.sub(r"\D", "", str(s or ""))
+
+
+def _to_int(v):
+    try:
+        return int(str(v).strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def status_crm(c: dict) -> str:
+    """ATIVO / PRE_INATIVO / INATIVO derivado do cadastro + dias sem compra."""
+    st = (c.get("status_comercial") or "").upper().strip()
+    dias = _to_int(c.get("dias_sem_compra"))
+    if st == "INATIVO":
+        return "INATIVO"
+    if dias is not None and dias >= 90:
+        return "INATIVO"
+    if dias is not None and dias >= 45:
+        return "PRE_INATIVO"
+    return "ATIVO"
+
+
+def _prev_month(year: int, month: int) -> str:
+    if month == 1:
+        return f"{year - 1}-12"
+    return f"{year}-{month - 1:02d}"
 
 
 def compute_pace(meta: float, faturado: float, total_bd: int, elapsed_bd: int) -> dict:
@@ -293,6 +324,100 @@ async def dashboard(
     }
 
 
+@api.get("/crm")
+async def crm(user=Depends(current_user)):
+    period = await get_period()
+    ry = int(period.get("ref_year") or datetime.now().year)
+    rm = int(period.get("ref_month") or datetime.now().month)
+    ref_month = f"{ry}-{rm:02d}"
+    prev_month = _prev_month(ry, rm)
+
+    metas = {m["cod_cliente"]: m["meta"] async for m in db.metas.find({}, {"_id": 0})}
+
+    raw = []
+    cur_fat: dict[str, float] = {}
+    prev_fat: dict[str, float] = {}
+
+    async for c in db.clients.find({}, {"_id": 0}):
+        cod = c["cod_cliente"]
+        compras = c.get("compras_f") or []
+        fat12 = round(sum(r["v"] for r in compras), 2)
+        cur = round(sum(r["v"] for r in compras if r["d"][:7] == ref_month), 2)
+        prev = round(sum(r["v"] for r in compras if r["d"][:7] == prev_month), 2)
+        cur_fat[cod] = cur
+        prev_fat[cod] = prev
+        raw.append({
+            "cod_cliente": cod,
+            "nome": _client_label(c),
+            "razao_social": c.get("razao_social"),
+            "cnpj_cpf": c.get("cnpj_cpf"),
+            "cnpj_digits": only_digits(c.get("cnpj_cpf")),
+            "cidade": (c.get("cidade") or "-").strip(),
+            "uf": c.get("uf"),
+            "dias_sem_compra": _to_int(c.get("dias_sem_compra")),
+            "status": status_crm(c),
+            "faturamento_12m": fat12,
+            "faturamento_acumulado": float(c.get("total_compras_rs") or 0.0),
+            "meta": float(metas.get(cod, 0.0)),
+        })
+
+    # ranking geral por faturamento 12 meses
+    ordered = sorted(raw, key=lambda x: -x["faturamento_12m"])
+    rank_geral = {x["cod_cliente"]: i + 1 for i, x in enumerate(ordered)}
+
+    # ranking do mes atual x mes anterior (movimento)
+    cur_rank = {cod: i + 1 for i, (cod, _) in enumerate(
+        sorted([(k, v) for k, v in cur_fat.items() if v > 0], key=lambda kv: -kv[1]))}
+    prev_rank = {cod: i + 1 for i, (cod, _) in enumerate(
+        sorted([(k, v) for k, v in prev_fat.items() if v > 0], key=lambda kv: -kv[1]))}
+
+    for x in raw:
+        cod = x["cod_cliente"]
+        x["rank"] = rank_geral.get(cod)
+        c_in, p_in = cod in cur_rank, cod in prev_rank
+        if c_in and p_in:
+            delta = prev_rank[cod] - cur_rank[cod]
+            x["rank_delta"] = delta
+            x["movimento"] = "subiu" if delta > 0 else "desceu" if delta < 0 else "estavel"
+        elif c_in and not p_in:
+            x["rank_delta"] = None
+            x["movimento"] = "novo"
+        elif not c_in and p_in:
+            x["rank_delta"] = None
+            x["movimento"] = "sumiu"
+        else:
+            x["rank_delta"] = None
+            x["movimento"] = "parado"
+
+    ordered_out = sorted(raw, key=lambda x: (x["rank"] is None, x["rank"] or 9999))
+
+    total = len(raw)
+    ativos = sum(1 for x in raw if x["status"] == "ATIVO")
+    pre = sum(1 for x in raw if x["status"] == "PRE_INATIVO")
+    inativos = sum(1 for x in raw if x["status"] == "INATIVO")
+
+    def pct(n):
+        return round(n / total, 4) if total else 0.0
+
+    cities = sorted({x["cidade"] for x in raw if x["cidade"] and x["cidade"] != "-"})
+
+    return {
+        "summary": {
+            "total": total,
+            "ativos": ativos,
+            "pre_inativos": pre,
+            "inativos": inativos,
+            "pct_ativos": pct(ativos),
+            "pct_pre_inativos": pct(pre),
+            "pct_inativos": pct(inativos),
+        },
+        "cities": cities,
+        "ref_month": ref_month,
+        "prev_month": prev_month,
+        "clients": ordered_out,
+    }
+
+
 @api.get("/clients/{cod}")
 async def client_detail(cod: str, user=Depends(current_user)):
     c = await db.clients.find_one({"cod_cliente": str(cod)}, {"_id": 0})
@@ -329,10 +454,19 @@ async def client_detail(cod: str, user=Depends(current_user)):
         period.get("dias_uteis_decorridos") or 0,
     )
 
+    # metricas CRM
+    fat12 = round(sum(r["v"] for r in (c.get("compras_f") or [])), 2)
+    qtd_ped = _to_int(c.get("qtd_pedidos")) or 0
+    acumulado = float(c.get("total_compras_rs") or 0.0)
+    ticket_medio = round(acumulado / qtd_ped, 2) if qtd_ped > 0 else 0.0
+    c_clean = {k: v for k, v in c.items() if k != "compras_f"}
+
     return {
-        "cliente": {**c, "meta": meta, "faturado": faturado,
+        "cliente": {**c_clean, "meta": meta, "faturado": faturado,
                     "pct": round(faturado / meta, 4) if meta > 0 else None,
-                    "nome": _client_label(c), **pace},
+                    "nome": _client_label(c), "status_crm": status_crm(c),
+                    "faturamento_12m": fat12, "faturamento_acumulado": acumulado,
+                    "ticket_medio": ticket_medio, **pace},
         "compras_mensais": mensal_list,
         "compras_recentes": recent,
         "period": period,

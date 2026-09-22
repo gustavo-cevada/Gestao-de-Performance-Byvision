@@ -18,6 +18,7 @@ import { ClientItem, ClientRow } from "@/src/components/client-row";
 import { Icon } from "@/src/components/icon";
 import { KpiCard } from "@/src/components/kpi-card";
 import { LogoHeader } from "@/src/components/logo-header";
+import { MenuSheet } from "@/src/components/menu-sheet";
 import { PeriodFilterModal } from "@/src/components/period-filter-modal";
 import { ProgressRing } from "@/src/components/progress-ring";
 import { useToast } from "@/src/components/toast";
@@ -78,6 +79,7 @@ export default function DashboardScreen() {
   const [day, setDay] = useState<string | null>(null);
   const [sort, setSort] = useState("atingimento_desc");
   const [periodOpen, setPeriodOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["dashboard", city, month, day, sort],
@@ -106,14 +108,11 @@ export default function DashboardScreen() {
       title="Performance"
       subtitle={user.nome?.split(" ")[0] ? `Olá, ${user.nome.split(" ")[0]}` : "Painel de vendas"}
       actions={[
+        { icon: "menu" as const, onPress: () => setMenuOpen(true), testID: "menu-button" },
         { icon: "calendar-range" as const, onPress: () => setPeriodOpen(true), testID: "period-button" },
         ...(sync.isPending
           ? []
           : [{ icon: "refresh" as const, onPress: () => sync.mutate(), testID: "sync-button" }]),
-        ...(user.role === "admin"
-          ? [{ icon: "tune-variant" as const, onPress: () => router.push("/admin"), testID: "admin-button" }]
-          : []),
-        { icon: "cog-outline" as const, onPress: () => router.push("/settings"), testID: "settings-button" },
       ]}
     />
   );
@@ -307,6 +306,7 @@ export default function DashboardScreen() {
         }}
         onClose={() => setPeriodOpen(false)}
       />
+      <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
     </View>
   );
 }
