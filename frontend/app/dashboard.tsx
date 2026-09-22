@@ -346,7 +346,8 @@ function HeroBar({
   const styles = useStyles();
   const { colors } = useTheme();
 
-  const tone = real >= 1 ? colors.success : real >= 0.76 ? colors.warning : colors.error;
+  const ritmo = prev > 0 ? real / prev : real >= 1 ? 1 : 0;
+  const tone = ritmo >= 1 ? colors.success : ritmo >= 0.76 ? colors.warning : colors.error;
   const faturadoW = Math.max(0, Math.min(1, real)) * 100;
   const prevW = Math.max(0, Math.min(1, prev)) * 100;
   const falta = Math.max(0, meta - realizado);
