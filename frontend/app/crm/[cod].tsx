@@ -4,9 +4,10 @@ import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiFetch } from "@/src/api/client";
+import { BarChart } from "@/src/components/bar-chart";
 import { Icon } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
-import { formatBRL } from "@/src/lib/format";
+import { formatBRL, formatDateBR } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -69,7 +70,6 @@ export default function CrmClientProfile() {
   const cl = data.cliente;
   const st = STATUS_META[cl.status_crm] ?? STATUS_META.ATIVO;
   const stColor = st.tone === "success" ? colors.success : st.tone === "warning" ? colors.warning : colors.error;
-  const maxMonthly = Math.max(1, ...data.compras_mensais.map((m: any) => m.valor));
 
   return (
     <View style={styles.screen}>
@@ -111,25 +111,7 @@ export default function CrmClientProfile() {
         {/* Histórico de compras */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Histórico de compras</Text>
-          {data.compras_mensais.length === 0 ? (
-            <Text style={styles.muted}>Sem compras no período.</Text>
-          ) : (
-            <View style={styles.chart}>
-              {data.compras_mensais.map((m: any) => (
-                <View key={m.mes} style={styles.chartCol}>
-                  <View style={styles.chartBarArea}>
-                    <View
-                      style={[
-                        styles.chartBar,
-                        { height: `${(m.valor / maxMonthly) * 100}%`, backgroundColor: colors.brandPrimary },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.chartLabel}>{m.mes.slice(5)}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <BarChart data={data.compras_mensais} />
         </View>
 
         {/* Últimos pedidos */}
@@ -138,16 +120,18 @@ export default function CrmClientProfile() {
           <View style={styles.pedHead}>
             <Text style={[styles.pedH, { flex: 1 }]}>Data</Text>
             <Text style={[styles.pedH, { flex: 1 }]}>Pedido</Text>
-            <Text style={[styles.pedH, { width: 90, textAlign: "right" }]}>Valor</Text>
+            <Text style={[styles.pedH, { width: 100, textAlign: "right" }]}>Valor</Text>
           </View>
           {data.compras_recentes.length === 0 ? (
             <Text style={styles.muted}>Nenhum pedido faturado recente.</Text>
           ) : (
             data.compras_recentes.slice(0, 15).map((p: any, i: number) => (
               <View key={`${p.id_pedido}-${i}`} style={styles.pedRow}>
-                <Text style={[styles.pedCell, { flex: 1 }]}>{p.data_baixa}</Text>
+                <Text style={[styles.pedCell, { flex: 1 }]}>{formatDateBR(p.data_baixa)}</Text>
                 <Text style={[styles.pedCell, { flex: 1 }]}>{p.id_pedido}</Text>
-                <Text style={[styles.pedValue, { width: 90 }]}>{formatBRL(p.valor)}</Text>
+                <Text style={[styles.pedValue, { width: 100 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {formatBRL(p.valor)}
+                </Text>
               </View>
             ))
           )}
@@ -164,7 +148,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <Text style={styles.statLabel} numberOfLines={2}>
         {label}
       </Text>
-      <Text style={styles.statValue} numberOfLines={1}>
+      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
         {value}
       </Text>
     </View>

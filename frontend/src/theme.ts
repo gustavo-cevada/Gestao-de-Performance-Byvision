@@ -1,9 +1,18 @@
-// Design tokens for Gestão de Performance de Vendas Byvision.
-// Light + Dark. Keys match /app/design_guidelines.json "color" / "color_dark".
-import { useMemo } from "react";
-import { Appearance, StyleSheet, useColorScheme } from "react-native";
+// Design tokens + tema (claro/escuro) via Context confiável.
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { StyleSheet, useColorScheme } from "react-native";
+
+import { storage } from "@/src/utils/storage";
 
 export type ColorScheme = "light" | "dark";
+export type ThemeMode = "light" | "dark" | "system";
 
 const light = {
   surface: "#ffffff",
@@ -48,45 +57,85 @@ const dark: typeof light = {
   onSurfaceTertiary: "#cccccc",
   surfaceInverse: "#ffffff",
   onSurfaceInverse: "#121212",
-  muted: "#999999",
+  muted: "#9a9a9a",
 
-  brand: "#00aa79",
-  onBrand: "#ffffff",
+  brand: "#00c48d",
+  onBrand: "#00231a",
   brandPrimary: "#00aa79",
   onBrandPrimary: "#ffffff",
   brandSecondary: "#00c48d",
   onBrandSecondary: "#111111",
-  brandTertiary: "#003324",
-  onBrandTertiary: "#00c48d",
+  brandTertiary: "#0d3a2e",
+  onBrandTertiary: "#4fd1a5",
 
-  success: "#00c48d",
+  success: "#2ee0a6",
   onSuccess: "#00231a",
   warning: "#ffb74d",
   onWarning: "#111111",
-  error: "#ff5252",
+  error: "#ff5c5c",
   onError: "#ffffff",
   info: "#e0e0e0",
   onInfo: "#121212",
 
   border: "#333333",
   borderStrong: "#555555",
-  divider: "#222222",
+  divider: "#262626",
 };
 
 export type ThemeColors = typeof light;
-
 export const defaultScheme = "light" satisfies ColorScheme;
+export const themes: { light: ThemeColors; dark: ThemeColors } = { light, dark };
 
-export const themes: { light: ThemeColors; dark?: ThemeColors } = { light, dark };
+const MODE_KEY = "byvision.color_mode";
 
-export function setColorScheme(scheme: ColorScheme | null) {
-  Appearance.setColorScheme?.(scheme ?? "unspecified");
+type ThemeCtx = {
+  scheme: ColorScheme;
+  colors: ThemeColors;
+  mode: ThemeMode;
+  setMode: (m: ThemeMode) => void;
+  ready: boolean;
+};
+
+const Ctx = createContext<ThemeCtx | null>(null);
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const device = useColorScheme();
+  const [mode, setModeState] = useState<ThemeMode>("light");
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    storage.getItem<ThemeMode>(MODE_KEY, "light").then((m) => {
+      setModeState((m as ThemeMode) || "light");
+      setReady(true);
+    });
+  }, []);
+
+  const setMode = useCallback((m: ThemeMode) => {
+    setModeState(m);
+    storage.setItem(MODE_KEY, m);
+  }, []);
+
+  const scheme: ColorScheme = mode === "system" ? (device === "dark" ? "dark" : "light") : mode;
+  const colors = themes[scheme] ?? themes.light;
+
+  const value = useMemo<ThemeCtx>(
+    () => ({ scheme, colors, mode, setMode, ready }),
+    [scheme, colors, mode, setMode, ready],
+  );
+
+  return React.createElement(Ctx.Provider, { value }, children);
 }
 
 export function useTheme(): { scheme: ColorScheme; colors: ThemeColors } {
-  const system = useColorScheme();
-  const scheme: ColorScheme = system && themes[system] ? system : defaultScheme;
-  return { scheme, colors: themes[scheme] ?? themes.light };
+  const c = useContext(Ctx);
+  if (!c) return { scheme: defaultScheme, colors: themes.light };
+  return { scheme: c.scheme, colors: c.colors };
+}
+
+export function useThemeMode(): { mode: ThemeMode; setMode: (m: ThemeMode) => void } {
+  const c = useContext(Ctx);
+  if (!c) return { mode: "light", setMode: () => {} };
+  return { mode: c.mode, setMode: c.setMode };
 }
 
 export function makeStyles<T extends StyleSheet.NamedStyles<T> | StyleSheet.NamedStyles<any>>(

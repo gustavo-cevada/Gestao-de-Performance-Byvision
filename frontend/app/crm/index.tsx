@@ -26,19 +26,7 @@ type CrmClient = {
   movimento: string;
 };
 
-type CrmResp = {
-  summary: {
-    total: number;
-    ativos: number;
-    pre_inativos: number;
-    inativos: number;
-    pct_ativos: number;
-    pct_pre_inativos: number;
-    pct_inativos: number;
-  };
-  cities: string[];
-  clients: CrmClient[];
-};
+type CrmResp = { cities: string[]; clients: CrmClient[] };
 
 const STATUS_META: Record<string, { label: string; tone: "success" | "warning" | "error" }> = {
   ATIVO: { label: "Ativo", tone: "success" },
@@ -103,9 +91,16 @@ export default function CrmScreen() {
     });
   }, [data, cidade, status, cod, search]);
 
-  const header = (
-    <LogoHeader title="CRM & Ranking" onBack={() => router.back()} />
-  );
+  const summary = useMemo(() => {
+    const total = filtered.length;
+    const ativos = filtered.filter((c) => c.status === "ATIVO").length;
+    const pre = filtered.filter((c) => c.status === "PRE_INATIVO").length;
+    const inativos = filtered.filter((c) => c.status === "INATIVO").length;
+    const pct = (n: number) => (total ? n / total : 0);
+    return { total, ativos, pre, inativos, pctA: pct(ativos), pctP: pct(pre), pctI: pct(inativos) };
+  }, [filtered]);
+
+  const header = <LogoHeader title="CRM & Ranking" onBack={() => router.back()} />;
 
   if (isLoading) {
     return (
@@ -133,15 +128,30 @@ export default function CrmScreen() {
     );
   }
 
-  const s = data.summary;
-
   const listHeader = (
     <View style={{ gap: 14 }}>
-      {/* Filtros */}
+      {/* Resumo (adequa-se ao filtro) */}
+      <View style={styles.summaryGrid}>
+        <SummaryCard label="Total" value={String(summary.total)} dot={colors.info} testID="summary-total" />
+        <SummaryCard label="Ativos" value={String(summary.ativos)} sub={formatPct(summary.pctA)} dot={colors.success} testID="summary-ativos" />
+        <SummaryCard label="Pré-inativos" value={String(summary.pre)} sub={formatPct(summary.pctP)} dot={colors.warning} testID="summary-pre" />
+        <SummaryCard label="Inativos" value={String(summary.inativos)} sub={formatPct(summary.pctI)} dot={colors.error} testID="summary-inativos" />
+      </View>
+
+      {/* Filtros com títulos */}
       <View style={styles.filtersRow}>
-        <SelectDropdown label="Cidade" value={cidade} options={cityOptions} onChange={setCidade} testID="filter-cidade" />
-        <SelectDropdown label="Cliente" value={cod} options={clientOptions} onChange={setCod} testID="filter-cliente" />
-        <SelectDropdown label="Status" value={status} options={statusOptions} onChange={setStatus} testID="filter-status" />
+        <View style={styles.filterField}>
+          <Text style={styles.filterLabel}>Cidade</Text>
+          <SelectDropdown label="Cidade" value={cidade} options={cityOptions} onChange={setCidade} testID="filter-cidade" />
+        </View>
+        <View style={styles.filterField}>
+          <Text style={styles.filterLabel}>Cliente</Text>
+          <SelectDropdown label="Cliente" value={cod} options={clientOptions} onChange={setCod} testID="filter-cliente" />
+        </View>
+        <View style={styles.filterField}>
+          <Text style={styles.filterLabel}>Status</Text>
+          <SelectDropdown label="Status" value={status} options={statusOptions} onChange={setStatus} testID="filter-status" />
+        </View>
       </View>
 
       {/* Busca */}
@@ -163,18 +173,9 @@ export default function CrmScreen() {
         )}
       </View>
 
-      {/* Resumo */}
-      <View style={styles.summaryGrid}>
-        <SummaryCard label="Total" value={String(s.total)} dot={colors.info} testID="summary-total" />
-        <SummaryCard label="Ativos" value={String(s.ativos)} sub={formatPct(s.pct_ativos)} dot={colors.success} testID="summary-ativos" />
-        <SummaryCard label="Pré-inativos" value={String(s.pre_inativos)} sub={formatPct(s.pct_pre_inativos)} dot={colors.warning} testID="summary-pre" />
-        <SummaryCard label="Inativos" value={String(s.inativos)} sub={formatPct(s.pct_inativos)} dot={colors.error} testID="summary-inativos" />
-      </View>
-
       {/* Cabeçalho da tabela */}
       <View style={styles.tableHead}>
         <Text style={[styles.thCliente, styles.thText]}>Cliente</Text>
-        <Text style={[styles.thCidade, styles.thText]}>Cidade</Text>
         <Text style={[styles.thDias, styles.thText]}>dias s/{"\n"}compra</Text>
         <Text style={[styles.thStatus, styles.thText]}>status</Text>
       </View>
@@ -189,9 +190,7 @@ export default function CrmScreen() {
         keyExtractor={(c) => c.cod_cliente}
         ListHeaderComponent={listHeader}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => (
-          <Row item={item} onPress={() => router.push(`/crm/${item.cod_cliente}`)} />
-        )}
+        renderItem={({ item }) => <Row item={item} onPress={() => router.push(`/crm/${item.cod_cliente}`)} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Icon name="account-search-outline" size={34} color={colors.muted} />
@@ -221,15 +220,19 @@ function Row({ item, onPress }: { item: CrmClient; onPress: () => void }) {
   const stColor = st.tone === "success" ? colors.success : st.tone === "warning" ? colors.warning : colors.error;
   const mov = movimentoIcon(item.movimento);
   const movColor = mov?.tone === "success" ? colors.success : mov?.tone === "error" ? colors.error : colors.brand;
+  const isTop3 = item.rank != null && item.rank <= 3;
 
   return (
-    <Pressable style={styles.row} onPress={onPress} testID={`crm-row-${item.cod_cliente}`}>
+    <Pressable style={[styles.row, isTop3 && styles.rowTop3]} onPress={onPress} testID={`crm-row-${item.cod_cliente}`}>
       <View style={styles.tdCliente}>
-        <Text style={styles.name} numberOfLines={1}>
-          {item.nome}
-        </Text>
+        <View style={styles.nameRow}>
+          {isTop3 && <Icon name="trophy" size={15} color={colors.warning} />}
+          <Text style={styles.name} numberOfLines={1}>
+            {item.nome}
+          </Text>
+        </View>
         <View style={styles.subRow}>
-          <Text style={styles.sub}>{`#${item.cod_cliente}`}</Text>
+          <Text style={styles.sub} numberOfLines={1}>{`#${item.cod_cliente} · ${item.cidade}`}</Text>
           {item.rank != null && (
             <View style={styles.rankBadge}>
               <Text style={styles.rankText}>{`#${item.rank}`}</Text>
@@ -241,9 +244,6 @@ function Row({ item, onPress }: { item: CrmClient; onPress: () => void }) {
           )}
         </View>
       </View>
-      <Text style={[styles.tdCidade, styles.cityText]} numberOfLines={2}>
-        {item.cidade}
-      </Text>
       <Text style={[styles.tdDias, styles.diasText]}>{item.dias_sem_compra ?? "—"}</Text>
       <View style={styles.tdStatus}>
         <View style={[styles.statusBadge, { backgroundColor: stColor }]}>
@@ -272,9 +272,13 @@ function SummaryCard({
     <View style={styles.summaryCard} testID={testID}>
       <View style={styles.summaryTop}>
         <View style={[styles.summaryDot, { backgroundColor: dot }]} />
-        <Text style={styles.summaryLabel}>{label}</Text>
+        <Text style={styles.summaryLabel} numberOfLines={1}>
+          {label}
+        </Text>
       </View>
-      <Text style={styles.summaryValue}>{value}</Text>
+      <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+        {value}
+      </Text>
       {!!sub && <Text style={styles.summarySub}>{sub}</Text>}
     </View>
   );
@@ -288,6 +292,8 @@ const useStyles = makeStyles((c) => ({
   retryText: { fontFamily: fonts.bold, color: c.onBrandPrimary, fontSize: 14 },
 
   filtersRow: { flexDirection: "row", gap: 8 },
+  filterField: { flex: 1, gap: 5 },
+  filterLabel: { fontFamily: fonts.semibold, fontSize: 12, color: c.muted, marginLeft: 2 },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -320,7 +326,7 @@ const useStyles = makeStyles((c) => ({
   },
   summaryTop: { flexDirection: "row", alignItems: "center", gap: 7 },
   summaryDot: { width: 9, height: 9, borderRadius: 5 },
-  summaryLabel: { fontFamily: fonts.medium, fontSize: 13, color: c.onSurfaceSecondary },
+  summaryLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: c.onSurfaceSecondary },
   summaryValue: { fontFamily: fonts.numBold, fontSize: 24, color: c.onSurface },
   summarySub: { fontFamily: fonts.numMedium, fontSize: 12, color: c.muted },
 
@@ -333,22 +339,29 @@ const useStyles = makeStyles((c) => ({
     marginTop: 4,
   },
   thText: { fontFamily: fonts.semibold, fontSize: 11, color: c.muted },
-  thCliente: { flex: 1.7 },
-  thCidade: { flex: 1.1 },
-  thDias: { width: 46, textAlign: "center" },
-  thStatus: { width: 78, textAlign: "center" },
+  thCliente: { flex: 1 },
+  thDias: { width: 54, textAlign: "center" },
+  thStatus: { width: 90, textAlign: "center" },
 
   row: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
+    paddingHorizontal: 6,
     borderBottomWidth: 1,
     borderBottomColor: c.divider,
+    borderRadius: 8,
   },
-  tdCliente: { flex: 1.7, paddingRight: 6, gap: 3 },
-  name: { fontFamily: fonts.semibold, fontSize: 14, color: c.onSurface },
-  subRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  sub: { fontFamily: fonts.numMedium, fontSize: 11, color: c.muted },
+  rowTop3: {
+    backgroundColor: c.brandTertiary,
+    borderBottomColor: "transparent",
+    marginBottom: 2,
+  },
+  tdCliente: { flex: 1, paddingRight: 8, gap: 3 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  name: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: c.onSurface },
+  subRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  sub: { fontFamily: fonts.numMedium, fontSize: 11, color: c.muted, maxWidth: "70%" },
   rankBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -360,13 +373,11 @@ const useStyles = makeStyles((c) => ({
   },
   rankText: { fontFamily: fonts.numBold, fontSize: 10, color: c.onSurfaceTertiary },
   rankDelta: { fontFamily: fonts.numBold, fontSize: 10 },
-  tdCidade: { flex: 1.1, paddingRight: 6 },
-  cityText: { fontFamily: fonts.regular, fontSize: 12, color: c.onSurfaceSecondary },
-  tdDias: { width: 46, textAlign: "center" },
-  diasText: { fontFamily: fonts.numMedium, fontSize: 13, color: c.onSurface },
-  tdStatus: { width: 78, alignItems: "center" },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
-  statusText: { fontFamily: fonts.semibold, fontSize: 10.5, color: "#ffffff" },
+  tdDias: { width: 54, textAlign: "center" },
+  diasText: { fontFamily: fonts.numMedium, fontSize: 14, color: c.onSurface },
+  tdStatus: { width: 90, alignItems: "center" },
+  statusBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+  statusText: { fontFamily: fonts.semibold, fontSize: 11, color: "#ffffff" },
 
   empty: { alignItems: "center", gap: 10, paddingVertical: 40 },
 }));

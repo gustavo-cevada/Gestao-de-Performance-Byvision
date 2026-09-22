@@ -4,9 +4,10 @@ import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiFetch } from "@/src/api/client";
+import { BarChart } from "@/src/components/bar-chart";
 import { Icon, IconName } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
-import { formatBRL, formatPct } from "@/src/lib/format";
+import { formatBRL, formatDateBR, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -70,8 +71,6 @@ export default function ClientDetail() {
           ? colors.warning
           : colors.error;
 
-  const maxMonthly = Math.max(1, ...data.compras_mensais.map((m) => m.valor));
-
   return (
     <View style={styles.screen}>
       {header}
@@ -79,7 +78,7 @@ export default function ClientDetail() {
         {/* Cabeçalho do cliente */}
         <View style={styles.card}>
           <Text style={styles.name}>{cl.nome}</Text>
-          {!!cl.razao_social && <Text style={styles.muted}>{cl.razao_social}</Text>}
+          <Text style={styles.cnpj}>{cl.cnpj_cpf ? `CNPJ: ${cl.cnpj_cpf}` : "—"}</Text>
           <View style={styles.chipsRow}>
             <Tag icon="map-marker-outline" text={`${cl.cidade ?? "-"} / ${cl.uf ?? ""}`} />
             <Tag icon="pound" text={String(cl.cod_cliente)} />
@@ -126,7 +125,7 @@ export default function ClientDetail() {
           <View style={styles.rowBetween}>
             <Metric label="Meta do mês" value={meta > 0 ? formatBRL(meta) : "—"} />
             <Metric
-              label="Meta/dia necessária"
+              label="Meta/dia"
               value={meta > 0 && cl.meta_diaria_necessaria != null ? formatBRL(cl.meta_diaria_necessaria) : "—"}
               align="right"
             />
@@ -146,37 +145,7 @@ export default function ClientDetail() {
         {/* Histórico mensal */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Faturamento por mês</Text>
-          {data.compras_mensais.length === 0 ? (
-            <Text style={styles.muted}>Sem compras no período.</Text>
-          ) : (
-            <View style={styles.chart}>
-              {data.compras_mensais.map((m) => (
-                <View key={m.mes} style={styles.chartCol}>
-                  <View style={styles.chartBarArea}>
-                    <View
-                      style={[
-                        styles.chartBar,
-                        { height: `${(m.valor / maxMonthly) * 100}%`, backgroundColor: colors.brandPrimary },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.chartLabel}>{m.mes.slice(5)}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Financeiro / RFM */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Informações</Text>
-          <InfoRow label="CNPJ/CPF" value={cl.cnpj_cpf ?? "-"} />
-          <InfoRow label="Dias sem compra" value={String(cl.dias_sem_compra ?? "-")} />
-          <InfoRow label="Última compra" value={cl.data_ultima_compra ?? "-"} />
-          <InfoRow label="Total histórico" value={formatBRL(cl.total_compras_rs)} />
-          <InfoRow label="Situação financeira" value={cl.fin_situacao ?? "-"} />
-          <InfoRow label="Limite de crédito" value={formatBRL(cl.fin_limite_credito)} />
-          <InfoRow label="Receita Federal" value={cl.rf_situacao ?? "-"} last />
+          <BarChart data={data.compras_mensais} />
         </View>
 
         {/* Compras recentes */}
@@ -188,7 +157,7 @@ export default function ClientDetail() {
             data.compras_recentes.slice(0, 12).map((p, i) => (
               <View key={`${p.id_pedido}-${i}`} style={[styles.purchaseRow, i > 0 && styles.divider]}>
                 <View>
-                  <Text style={styles.purchaseDate}>{p.data_baixa}</Text>
+                  <Text style={styles.purchaseDate}>{formatDateBR(p.data_baixa)}</Text>
                   <Text style={styles.muted}>Pedido {p.id_pedido}</Text>
                 </View>
                 <Text style={styles.purchaseValue}>{formatBRL(p.valor)}</Text>
@@ -206,7 +175,7 @@ function Tag({ icon, text }: { icon: IconName; text: string }) {
   const { colors } = useTheme();
   return (
     <View style={styles.tag}>
-      <Icon name={icon} size={14} color={colors.onBrandTertiary} />
+      <Icon name={icon} size={14} color={colors.muted} />
       <Text style={styles.tagText}>{text}</Text>
     </View>
   );
@@ -215,19 +184,11 @@ function Tag({ icon, text }: { icon: IconName; text: string }) {
 function Metric({ label, value, align = "left" }: { label: string; value: string; align?: "left" | "right" }) {
   const styles = useStyles();
   return (
-    <View style={{ alignItems: align === "right" ? "flex-end" : "flex-start" }}>
+    <View style={{ alignItems: align === "right" ? "flex-end" : "flex-start", flex: 1 }}>
       <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
-}
-
-function InfoRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
-  const styles = useStyles();
-  return (
-    <View style={[styles.infoRow, !last && styles.divider]}>
-      <Text style={styles.muted}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
+      <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -245,23 +206,24 @@ const useStyles = makeStyles((c) => ({
     gap: 12,
   },
   name: { fontFamily: fonts.bold, fontSize: 18, color: c.onSurface },
+  cnpj: { fontFamily: fonts.numMedium, fontSize: 12, color: c.muted },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: c.brandTertiary,
+    backgroundColor: c.surfaceTertiary,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  tagText: { fontFamily: fonts.medium, fontSize: 12, color: c.onBrandTertiary },
+  tagText: { fontFamily: fonts.medium, fontSize: 12, color: c.onSurfaceTertiary },
   cardTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   pctBig: { fontFamily: fonts.numBold, fontSize: 18 },
-  barTrack: { height: 12, borderRadius: 999, backgroundColor: c.surfaceTertiary, overflow: "hidden", position: "relative" },
-  barFill: { height: 12, borderRadius: 999 },
-  barFillAbs: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 999 },
+  barTrack: { height: 12, borderRadius: 3, backgroundColor: c.surfaceTertiary, overflow: "hidden", position: "relative" },
+  barFill: { height: 12, borderRadius: 0 },
+  barFillAbs: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 0 },
   deficit: { position: "absolute", top: 0, bottom: 0, opacity: 0.28 },
   marker: { position: "absolute", top: -2, bottom: -2, width: 2, opacity: 0.7 },
   gapChip: {

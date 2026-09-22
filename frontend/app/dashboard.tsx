@@ -197,7 +197,11 @@ export default function DashboardScreen() {
         </View>
         <View style={styles.metaBox}>
           <Text style={styles.metaLabel}>{dayMode ? "META DO DIA" : "META DE VENDAS DO MÊS"}</Text>
-          <Text style={styles.metaValue}>{formatBRL(k.meta_vendas)}</Text>
+          <View style={styles.metaValueBox}>
+            <Text style={styles.metaValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {formatBRL(k.meta_vendas)}
+            </Text>
+          </View>
           {dayMode ? (
             <Text style={styles.metaHint}>{scope.day ? dayLong(scope.day) : ""}</Text>
           ) : (
@@ -218,7 +222,7 @@ export default function DashboardScreen() {
 
       {/* KPI grid */}
       <View style={styles.grid}>
-        <KpiCard label={dayMode ? "Vendas do dia" : "Vendas realizadas"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" tone="success" testID="kpi-realizada" />
+        <KpiCard label={dayMode ? "Vendas do dia" : "Vendas realizadas"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
         <KpiCard label={dayMode ? "Provisionado do dia" : "Venda provisionada"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
       </View>
       <View style={styles.grid}>
@@ -389,7 +393,12 @@ const useStyles = makeStyles((c) => ({
   legendValue: { fontFamily: fonts.numBold, fontSize: 13, color: c.onSurface },
   metaBox: { alignItems: "center", gap: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: c.divider, width: "100%" },
   metaLabel: { fontFamily: fonts.medium, fontSize: 11, color: c.muted, letterSpacing: 0.5, marginTop: 8 },
-  metaValue: { fontFamily: fonts.numBold, fontSize: 26, color: c.brand },
+  metaValueBox: {
+    alignSelf: "center",
+    alignItems: "center",
+    paddingVertical: 2,
+  },
+  metaValue: { fontFamily: fonts.numBold, fontSize: 28, color: c.onSurface },
   metaHint: { fontFamily: fonts.regular, fontSize: 12, color: c.muted },
   metaDayChip: {
     flexDirection: "row",

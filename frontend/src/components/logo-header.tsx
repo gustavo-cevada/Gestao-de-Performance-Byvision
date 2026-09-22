@@ -26,7 +26,7 @@ export function LogoHeader({
   const { colors } = useTheme();
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + 10 }]} testID="app-header">
+    <View style={[styles.wrap, { paddingTop: insets.top + 18 }]} testID="app-header">
       <View style={styles.row}>
         <View style={styles.left}>
           {onBack ? (
@@ -73,32 +73,32 @@ const useStyles = makeStyles((c) => ({
   wrap: {
     backgroundColor: c.brandPrimary,
     paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingBottom: 22,
   },
-  row: { flexDirection: "row", alignItems: "center", minHeight: 40 },
-  left: { width: 96, justifyContent: "center" },
-  logo: { width: 96, height: 30 },
-  backBtn: { width: 34, height: 34, justifyContent: "center", alignItems: "flex-start" },
+  row: { flexDirection: "row", alignItems: "center", minHeight: 52 },
+  left: { width: 104, justifyContent: "center" },
+  logo: { width: 112, height: 36 },
+  backBtn: { width: 38, height: 38, justifyContent: "center", alignItems: "flex-start" },
   center: { flex: 1, alignItems: "center" },
   title: {
     color: c.onBrandPrimary,
     fontFamily: fonts.bold,
-    fontSize: 17,
+    fontSize: 19,
   },
   subtitle: {
     color: c.onBrandPrimary,
-    opacity: 0.85,
+    opacity: 0.9,
     fontFamily: fonts.regular,
-    fontSize: 12,
-    marginTop: 1,
+    fontSize: 13,
+    marginTop: 3,
   },
-  actions: { flexDirection: "row", width: 96, justifyContent: "flex-end", gap: 6 },
+  actions: { flexDirection: "row", width: 104, justifyContent: "flex-end", gap: 8 },
   actionBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 }));

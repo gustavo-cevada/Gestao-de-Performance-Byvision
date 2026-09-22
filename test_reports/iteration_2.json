@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend-only regression on Byvision Sales Performance app (Expo web preview, mobile 390x844). Focus: theme toggle bug fix + CRM redesign + client detail refinements + dashboard visual tweaks. Verified via Playwright + code review: (1) Theme Claro/Escuro/Sistema now works via new ThemeProvider Context and PERSISTS across navigation — settings background switched from rgb(255,255,255) to rgb(18,18,18) after tapping theme-dark and stayed dark on Dashboard after nav-back. (2) Login VAGNER/vagner123 OK. (3) Dashboard: 'META DE VENDAS DO MÊS' box uses white text (rgb(255,255,255)) on green background (rgb(0,170,121)); 'Vendas realizadas' KPI shown with full value R$ 32.854,20 (no ellipsis); 'ideal hoje' no longer appears in dashboard body/list. (4) Menu (menu-button) opens sheet with Painel, CRM & Ranking, Configurações, Sair (Gestão de Metas correctly hidden for vendedor). (5) CRM screen order: summary cards top (y=108) → filter dropdowns with labels 'Cidade/Cliente/Status' (y=372) → search (y=419), which matches the requested layout. Table header contains only Cliente + dias s/compra + status (no Cidade column). Summary recalculates when Inativo filter applied: Total 59→30, Ativos 24→0, Inativos 30→30 (100%). (6) CRM search by CNPJ digits works (input onlyDigits filter). (7) Top-3 destaque implemented via rowTop3 (brandTertiary bg + trophy icon) in code. (8) Client profile (CRM route /crm/[cod]) uses new BarChart with tap-to-show tooltip (monthLabel + formatBRL); code verified. Client metas route /client/[cod]: NO 'Informações' section, CNPJ shown right under name (styles.cnpj below styles.name), 'Meta/dia' label (not 'Meta/dia necessária'), chips use surfaceTertiary neutral gray, formatDateBR in Compras recentes for dd/mm/aaaa. (9) Header wrap uses paddingTop insets.top+18 and paddingBottom 22 (bigger). (10) All monetary Text use adjustsFontSizeToFit + minimumFontScale to avoid ellipsis. Only console warning: 'shadow*' style props deprecated (non-blocking RN-web).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web shadow props", "issue": "Console warning: 'shadow*' style props are deprecated. Use 'boxShadow'. Non-blocking on web preview but should be migrated. No source file identified in this iteration (likely a nested lib style)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_byvision_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(LOW) Migrate remaining shadow* RN styles to boxShadow to remove the deprecation warning on web preview.",
+    "(INFO) Profile route /crm/[cod] can be slow (>3s) on first hit when Data Warehouse is cold — consider a skeleton loader with 'Carregando...' text so users see progress instead of only a spinner."
+  ],
+  "critical_code_review_comments": [
+    "ThemeProvider (src/theme.ts) correctly wires Context + AsyncStorage persistence via storage util; makeStyles memoizes StyleSheet.create by colors so dark/light applies immediately across screens.",
+    "CRM index.tsx filters summary from `filtered` list, so cards do recompute on filter change (verified in browser).",
+    "client/[cod].tsx correctly removed 'Informações' section and moved CNPJ under name; label is 'Meta/dia' as requested; chips use surfaceTertiary (neutral).",
+    "bar-chart.tsx exposes testID `bar-<mes>` and shows tooltip w/ monthLabel + formatBRL on Pressable onPress — matches requirement.",
+    "logo-header.tsx uses `paddingTop: insets.top + 18` and `paddingBottom: 22` — header noticeably larger (verified visually).",
+    "dashboard.tsx metaValueBox has `backgroundColor: c.brandPrimary` and metaValue uses `color: c.onBrandPrimary` (#ffffff) — verified via computed style rgb(255,255,255) on rgb(0,170,121).",
+    "client-row.tsx no longer renders 'ideal hoje' in dashboard list — verified body text does not contain the phrase."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not tested)", "frontend": "~98%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All fixes from this iteration verified. Credentials VAGNER/vagner123 (vendedor, 59 clients) and admin/admin123. testIDs to reuse: login-identifier-input, login-password-input, login-submit-button, menu-button, menu-settings, menu-crm, theme-light/theme-dark/theme-system, header-back, summary-total/ativos/pre/inativos, filter-cidade/cliente/status, crm-search, crm-row-<cod>, client-row-<cod>, bar-<YYYY-MM>. Profile route /clients/{cod} can take a few seconds to load on cold fetch — wait ≥3s before asserting profile content.",
+  "rca_of_issue": "Not applicable — this iteration verified requested fixes rather than reproducing a bug. Theme bug from previous iteration is now fixed by migrating from Appearance API to a Context-based ThemeProvider that reads/writes AsyncStorage under key `byvision.color_mode` and derives colorScheme = mode==='system' ? device : mode. Verified toggling changes background immediately and persists across navigation."
+}

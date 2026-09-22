@@ -21,3 +21,12 @@ export function formatCompact(value: number | null | undefined): string {
   if (abs >= 1000) return `R$ ${(n / 1000).toFixed(1).replace(".", ",")}k`;
   return formatBRL(n);
 }
+
+// "2026-09-15" -> "15/09/2026"
+export function formatDateBR(ymd: string | null | undefined): string {
+  if (!ymd) return "—";
+  const s = String(ymd).slice(0, 10);
+  const [y, m, d] = s.split("-");
+  if (!y || !m || !d) return s;
+  return `${d}/${m}/${y}`;
+}

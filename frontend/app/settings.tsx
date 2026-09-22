@@ -5,11 +5,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon, IconName } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
 import { useAuth } from "@/src/context/auth";
-import { Mode, useColorMode } from "@/src/theme-mode";
 import { fonts } from "@/src/typography";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, ThemeMode, useTheme, useThemeMode } from "@/src/theme";
 
-const OPTIONS: { key: Mode; label: string; icon: IconName }[] = [
+const OPTIONS: { key: ThemeMode; label: string; icon: IconName }[] = [
   { key: "light", label: "Claro", icon: "white-balance-sunny" },
   { key: "dark", label: "Escuro", icon: "weather-night" },
   { key: "system", label: "Sistema", icon: "cellphone-cog" },
@@ -21,7 +20,7 @@ export default function Settings() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { mode, change } = useColorMode();
+  const { mode, setMode } = useThemeMode();
 
   async function onLogout() {
     await logout();
@@ -52,7 +51,7 @@ export default function Settings() {
               return (
                 <Pressable
                   key={o.key}
-                  onPress={() => change(o.key)}
+                  onPress={() => setMode(o.key)}
                   style={[styles.segItem, active && { backgroundColor: colors.brandPrimary }]}
                   testID={`theme-${o.key}`}
                 >

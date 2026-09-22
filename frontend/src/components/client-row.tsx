@@ -90,12 +90,11 @@ export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => 
               size={14}
               color={behind ? colors.error : colors.success}
             />
-            <Text style={[styles.gapText, { color: behind ? colors.error : colors.success }]}>
+            <Text style={[styles.gapText, { color: behind ? colors.error : colors.success }]} numberOfLines={1}>
               {behind ? "Atrasado" : "Adiantado"} {formatPct(Math.abs(item.gap_pct ?? 0))} ·{" "}
               {formatBRL(Math.abs(item.gap_valor ?? 0))}
             </Text>
           </View>
-          <Text style={styles.expHint}>Ideal hoje {formatPct(item.exp_frac)}</Text>
         </View>
       )}
     </Pressable>
@@ -107,7 +106,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue} numberOfLines={1}>
+      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
         {value}
       </Text>
     </View>
@@ -131,12 +130,12 @@ const useStyles = makeStyles((c) => ({
 
   barTrack: {
     height: 10,
-    borderRadius: 999,
+    borderRadius: 3,
     backgroundColor: c.surfaceTertiary,
     overflow: "hidden",
     position: "relative",
   },
-  barFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 999 },
+  barFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 0 },
   deficit: { position: "absolute", top: 0, bottom: 0, opacity: 0.28 },
   marker: { position: "absolute", top: -1, bottom: -1, width: 2, opacity: 0.7 },
 
@@ -145,7 +144,7 @@ const useStyles = makeStyles((c) => ({
   statLabel: { fontFamily: fonts.regular, fontSize: 10, color: c.muted },
   statValue: { fontFamily: fonts.numMedium, fontSize: 13, color: c.onSurfaceSecondary },
 
-  gapLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  gapLine: { flexDirection: "row", alignItems: "center" },
   gapChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -155,5 +154,4 @@ const useStyles = makeStyles((c) => ({
     borderRadius: 999,
   },
   gapText: { fontFamily: fonts.semibold, fontSize: 11.5 },
-  expHint: { fontFamily: fonts.numMedium, fontSize: 11, color: c.muted },
 }));

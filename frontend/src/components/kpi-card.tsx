@@ -9,6 +9,7 @@ export function KpiCard({
   value,
   icon,
   tone = "neutral",
+  filled = false,
   hint,
   testID,
 }: {
@@ -16,11 +17,33 @@ export function KpiCard({
   value: string;
   icon: IconName;
   tone?: "neutral" | "success" | "error" | "warning";
+  filled?: boolean;
   hint?: string;
   testID?: string;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
+
+  if (filled) {
+    return (
+      <View style={[styles.card, styles.cardFilled]} testID={testID}>
+        <View style={[styles.iconWrap, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
+          <Icon name={icon} size={18} color={colors.onBrandPrimary} />
+        </View>
+        <Text style={styles.labelFilled} numberOfLines={2}>
+          {label}
+        </Text>
+        <Text
+          style={[styles.value, { color: colors.onBrandPrimary }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+        >
+          {value}
+        </Text>
+      </View>
+    );
+  }
 
   const valueColor =
     tone === "success"
@@ -48,7 +71,12 @@ export function KpiCard({
       <Text style={styles.label} numberOfLines={2}>
         {label}
       </Text>
-      <Text style={[styles.value, { color: valueColor }]} numberOfLines={1}>
+      <Text
+        style={[styles.value, { color: valueColor }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
+      >
         {value}
       </Text>
       {!!hint && <Text style={styles.hint}>{hint}</Text>}
@@ -66,6 +94,7 @@ const useStyles = makeStyles((c) => ({
     padding: 14,
     gap: 6,
   },
+  cardFilled: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
   iconWrap: {
     width: 30,
     height: 30,
@@ -74,6 +103,7 @@ const useStyles = makeStyles((c) => ({
     alignItems: "center",
   },
   label: { fontFamily: fonts.medium, fontSize: 12, color: c.muted },
+  labelFilled: { fontFamily: fonts.medium, fontSize: 12, color: c.onBrandPrimary, opacity: 0.9 },
   value: { fontFamily: fonts.numBold, fontSize: 19 },
   hint: { fontFamily: fonts.regular, fontSize: 11, color: c.muted },
 }));
