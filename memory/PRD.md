@@ -43,6 +43,10 @@ App mobile (com acesso web/desktop) para vendedores da Byvision acompanharem met
 - Filtros selecionados (chips Ordenar/cidade): cor de seleção usa onSurface (preto no claro / branco no escuro) em vez de verde.
 - CRM: corrigida a lógica de variação de ranking. Antes o rank exibido (12m) divergia do delta (mensal), gerando "#1 caiu N". Agora o delta compara o ranking 12m atual vs. o mesmo ranking excluindo o mês de referência (posição no fim do mês passado): delta = posição_anterior - posição_atual (positivo=subiu). Verificado: #1 nunca "desceu".
 
+## CRM — status e filtro por quadro
+- Badges de status na lista viraram pílulas contornadas (texto colorido + borda, maiúsculas): ATIVO/PRÉ-INATIVO/INATIVO.
+- Quadros de resumo (Total/Ativos/Pré-inativos/Inativos) são clicáveis e aplicam o filtro de status (toggle; Total limpa). Resumo calculado ignorando o filtro de status para manter os quadros informativos.
+
 ## Backlog
 - P1: adicionar metas para clientes da planilha ausentes na carteira atual (admin).
 - P2: gráfico Pareto de produtos por cliente (endpoint DW disponível).

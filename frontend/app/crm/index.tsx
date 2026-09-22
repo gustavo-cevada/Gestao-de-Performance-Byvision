@@ -72,13 +72,12 @@ export default function CrmScreen() {
     [data],
   );
 
-  const filtered = useMemo(() => {
+  const filteredBase = useMemo(() => {
     const list = data?.clients ?? [];
     const term = search.trim().toLowerCase();
     const digits = onlyDigits(search);
     return list.filter((c) => {
       if (cidade !== "TODAS" && c.cidade !== cidade) return false;
-      if (status !== "TODOS" && c.status !== status) return false;
       if (cod !== "TODOS" && c.cod_cliente !== cod) return false;
       if (term) {
         const byName = c.nome.toLowerCase().includes(term);
@@ -89,16 +88,24 @@ export default function CrmScreen() {
       }
       return true;
     });
-  }, [data, cidade, status, cod, search]);
+  }, [data, cidade, cod, search]);
 
+  const filtered = useMemo(
+    () => (status === "TODOS" ? filteredBase : filteredBase.filter((c) => c.status === status)),
+    [filteredBase, status],
+  );
+
+  // resumo ignora o filtro de status para manter os quadros clicáveis e informativos
   const summary = useMemo(() => {
-    const total = filtered.length;
-    const ativos = filtered.filter((c) => c.status === "ATIVO").length;
-    const pre = filtered.filter((c) => c.status === "PRE_INATIVO").length;
-    const inativos = filtered.filter((c) => c.status === "INATIVO").length;
+    const total = filteredBase.length;
+    const ativos = filteredBase.filter((c) => c.status === "ATIVO").length;
+    const pre = filteredBase.filter((c) => c.status === "PRE_INATIVO").length;
+    const inativos = filteredBase.filter((c) => c.status === "INATIVO").length;
     const pct = (n: number) => (total ? n / total : 0);
     return { total, ativos, pre, inativos, pctA: pct(ativos), pctP: pct(pre), pctI: pct(inativos) };
-  }, [filtered]);
+  }, [filteredBase]);
+
+  const toggleStatus = (s: string) => setStatus((prev) => (prev === s ? "TODOS" : s));
 
   const header = <LogoHeader title="CRM & Ranking" onBack={() => router.back()} />;
 
@@ -132,10 +139,10 @@ export default function CrmScreen() {
     <View style={{ gap: 14 }}>
       {/* Resumo (adequa-se ao filtro) */}
       <View style={styles.summaryGrid}>
-        <SummaryCard label="Total" value={String(summary.total)} dot={colors.info} testID="summary-total" />
-        <SummaryCard label="Ativos" value={String(summary.ativos)} sub={formatPct(summary.pctA)} dot={colors.success} testID="summary-ativos" />
-        <SummaryCard label="Pré-inativos" value={String(summary.pre)} sub={formatPct(summary.pctP)} dot={colors.warning} testID="summary-pre" />
-        <SummaryCard label="Inativos" value={String(summary.inativos)} sub={formatPct(summary.pctI)} dot={colors.error} testID="summary-inativos" />
+        <SummaryCard label="Total" value={String(summary.total)} dot={colors.info} active={status === "TODOS"} onPress={() => setStatus("TODOS")} testID="summary-total" />
+        <SummaryCard label="Ativos" value={String(summary.ativos)} sub={formatPct(summary.pctA)} dot={colors.success} active={status === "ATIVO"} onPress={() => toggleStatus("ATIVO")} testID="summary-ativos" />
+        <SummaryCard label="Pré-inativos" value={String(summary.pre)} sub={formatPct(summary.pctP)} dot={colors.warning} active={status === "PRE_INATIVO"} onPress={() => toggleStatus("PRE_INATIVO")} testID="summary-pre" />
+        <SummaryCard label="Inativos" value={String(summary.inativos)} sub={formatPct(summary.pctI)} dot={colors.error} active={status === "INATIVO"} onPress={() => toggleStatus("INATIVO")} testID="summary-inativos" />
       </View>
 
       {/* Filtros com títulos */}
@@ -246,8 +253,8 @@ function Row({ item, onPress }: { item: CrmClient; onPress: () => void }) {
       </View>
       <Text style={[styles.tdDias, styles.diasText]}>{item.dias_sem_compra ?? "—"}</Text>
       <View style={styles.tdStatus}>
-        <View style={[styles.statusBadge, { backgroundColor: stColor }]}>
-          <Text style={styles.statusText}>{st.label}</Text>
+        <View style={[styles.statusBadge, { borderColor: stColor }]}>
+          <Text style={[styles.statusText, { color: stColor }]}>{st.label.toUpperCase()}</Text>
         </View>
       </View>
     </Pressable>
@@ -259,17 +266,25 @@ function SummaryCard({
   value,
   sub,
   dot,
+  active,
+  onPress,
   testID,
 }: {
   label: string;
   value: string;
   sub?: string;
   dot: string;
+  active?: boolean;
+  onPress?: () => void;
   testID?: string;
 }) {
   const styles = useStyles();
   return (
-    <View style={styles.summaryCard} testID={testID}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.summaryCard, active && { borderColor: dot, borderWidth: 1.5, backgroundColor: dot + "1A" }]}
+      testID={testID}
+    >
       <View style={styles.summaryTop}>
         <View style={[styles.summaryDot, { backgroundColor: dot }]} />
         <Text style={styles.summaryLabel} numberOfLines={1}>
@@ -280,7 +295,7 @@ function SummaryCard({
         {value}
       </Text>
       {!!sub && <Text style={styles.summarySub}>{sub}</Text>}
-    </View>
+    </Pressable>
   );
 }
 
@@ -376,8 +391,8 @@ const useStyles = makeStyles((c) => ({
   tdDias: { width: 54, textAlign: "center" },
   diasText: { fontFamily: fonts.numMedium, fontSize: 14, color: c.onSurface },
   tdStatus: { width: 90, alignItems: "center" },
-  statusBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
-  statusText: { fontFamily: fonts.semibold, fontSize: 11, color: "#ffffff" },
+  statusBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, borderWidth: 1.5, backgroundColor: "transparent" },
+  statusText: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.4 },
 
   empty: { alignItems: "center", gap: 10, paddingVertical: 40 },
 }));
