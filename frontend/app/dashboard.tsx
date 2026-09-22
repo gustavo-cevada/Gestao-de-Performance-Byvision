@@ -220,7 +220,7 @@ export default function DashboardScreen() {
       {/* KPI grid */}
       <View style={styles.grid}>
         <KpiCard label={dayMode ? "Vendas do dia" : "Faturado"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
-        <KpiCard label={dayMode ? "Provisionado do dia" : "Provisionado"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
+        <KpiCard label={dayMode ? "Previsionado do dia" : "Previsionado"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
       </View>
       <View style={styles.grid}>
         <KpiCard
