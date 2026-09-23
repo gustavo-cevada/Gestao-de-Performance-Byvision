@@ -45,7 +45,7 @@ export default function Login() {
       setError(err);
       return;
     }
-    router.replace("/dashboard");
+    router.replace("/");
   }
 
   return (

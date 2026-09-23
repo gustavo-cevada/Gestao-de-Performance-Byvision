@@ -47,21 +47,54 @@ def get_health() -> dict:
     return resp.json()
 
 
-def get_vendedor_info() -> dict | None:
+def get_all_vendedores() -> list[dict]:
+    """Lista de todos os vendedores (cod, nome, email, ativo, qt_clientes)."""
+    data = _get("/vendedores")
+    itens = data if isinstance(data, list) else data.get("itens", [])
+    out = []
+    for v in itens:
+        try:
+            cod = int(v.get("cod_vendedor"))
+        except (TypeError, ValueError):
+            continue
+        out.append({
+            "cod_vendedor": cod,
+            "nome": (v.get("vendedor_nome") or "").strip() or None,
+            "email": v.get("vendedor_email"),
+            "ativo": v.get("vendedor_ativo"),
+            "qt_clientes": int(v.get("qt_clientes") or 0),
+        })
+    return out
+
+
+def get_vendedor_info(cod_vendedor: int | None = None) -> dict | None:
     """Dados oficiais do vendedor (nome, ativo, qt_clientes)."""
+    cod = int(cod_vendedor) if cod_vendedor is not None else VENDEDOR_COD
     data = _get("/vendedores")
     itens = data if isinstance(data, list) else data.get("itens", [])
     for v in itens:
-        if int(v.get("cod_vendedor", -1)) == VENDEDOR_COD:
+        if int(v.get("cod_vendedor", -1)) == cod:
             return v
     return None
 
 
-def get_clientes() -> list[dict]:
-    """Todos os clientes do vendedor (Cliente 360)."""
-    data = _get("/clientes", {"cod_vendedor": VENDEDOR_COD, "page_size": 500, "page": 1})
-    itens = data.get("itens", []) if isinstance(data, dict) else data
-    return itens
+def get_clientes(cod_vendedor: int | None = None) -> list[dict]:
+    """Todos os clientes do vendedor (Cliente 360), paginando se necessario."""
+    cod = int(cod_vendedor) if cod_vendedor is not None else VENDEDOR_COD
+    out: list[dict] = []
+    page = 1
+    while True:
+        data = _get("/clientes", {"cod_vendedor": cod, "page_size": 500, "page": page})
+        itens = data.get("itens", []) if isinstance(data, dict) else data
+        if not itens:
+            break
+        out.extend(itens)
+        if len(itens) < 500:
+            break
+        page += 1
+        if page > 20:  # guard-rail
+            break
+    return out
 
 
 def get_compras(cod: str, desde: str) -> list[dict]:

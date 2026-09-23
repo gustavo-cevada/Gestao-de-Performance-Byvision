@@ -19,18 +19,23 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const items: Item[] = [
-    { icon: "view-dashboard-outline", label: "Painel de Performance", route: "/dashboard", testID: "menu-dashboard" },
-    { icon: "account-group-outline", label: "CRM & Ranking", route: "/crm", testID: "menu-crm" },
-    ...(user?.role === "admin"
-      ? [{ icon: "tune-variant" as const, label: "Gestão de Metas", route: "/admin", testID: "menu-admin" }]
-      : []),
-    { icon: "cog-outline", label: "Configurações", route: "/settings", testID: "menu-settings" },
-  ];
+  const items: Item[] =
+    user?.role === "admin"
+      ? [
+          { icon: "shield-crown-outline", label: "Painel Admin", route: "/admin", testID: "menu-admin" },
+          { icon: "tune-variant", label: "Gestão de Metas", route: "/admin/metas", testID: "menu-metas" },
+          { icon: "account-cog-outline", label: "Usuários", route: "/admin/users", testID: "menu-users" },
+          { icon: "cog-outline", label: "Configurações", route: "/settings", testID: "menu-settings" },
+        ]
+      : [
+          { icon: "view-dashboard-outline", label: "Painel de Performance", route: "/dashboard", testID: "menu-dashboard" },
+          { icon: "account-group-outline", label: "CRM & Ranking", route: "/crm", testID: "menu-crm" },
+          { icon: "cog-outline", label: "Configurações", route: "/settings", testID: "menu-settings" },
+        ];
 
   function go(route: string) {
     onClose();
-    if (route === "/dashboard") router.replace("/dashboard");
+    if (route === "/dashboard" || route === "/admin") router.replace(route as any);
     else router.push(route as any);
   }
 

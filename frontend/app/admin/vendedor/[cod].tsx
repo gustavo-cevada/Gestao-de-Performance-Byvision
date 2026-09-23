@@ -1,16 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Redirect, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiFetch } from "@/src/api/client";
@@ -19,9 +10,7 @@ import { ClientItem, ClientRow } from "@/src/components/client-row";
 import { Icon } from "@/src/components/icon";
 import { KpiCard } from "@/src/components/kpi-card";
 import { LogoHeader } from "@/src/components/logo-header";
-import { MenuSheet } from "@/src/components/menu-sheet";
 import { PeriodFilterModal } from "@/src/components/period-filter-modal";
-import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/context/auth";
 import { dayLong, monthLabel, pad2 } from "@/src/lib/date";
 import { formatBRL, formatPct } from "@/src/lib/format";
@@ -37,12 +26,10 @@ type Scope = {
   dias_uteis_restantes: number;
   is_ref_month: boolean;
 };
-
 type Dashboard = {
-  period: { ref_year?: number; ref_month?: number; last_sync?: string };
+  period: { ref_year?: number; ref_month?: number };
   scope: Scope;
   months: string[];
-  sort: string;
   kpi: {
     meta_vendas: number;
     vendas_realizadas: number;
@@ -58,56 +45,35 @@ type Dashboard = {
   clients: ClientItem[];
 };
 
-const SORTS = [
-  { key: "atingimento_desc", label: "Maior atingimento" },
-  { key: "atingimento_asc", label: "Menor atingimento" },
-  { key: "faturado_desc", label: "Mais vendido" },
-  { key: "faturado_asc", label: "Menos vendido" },
-];
-
-export default function DashboardScreen() {
+export default function VendedorDetail() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const toast = useToast();
-  const qc = useQueryClient();
   const { user } = useAuth();
+  const params = useLocalSearchParams<{ cod: string; nome?: string }>();
+  const cod = String(params.cod);
 
   const [city, setCity] = useState("TODAS");
   const [month, setMonth] = useState<string | null>(null);
   const [day, setDay] = useState<string | null>(null);
-  const [sort, setSort] = useState("atingimento_desc");
   const [periodOpen, setPeriodOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [clientQuery, setClientQuery] = useState("");
 
-  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: ["dashboard", city, month, day, sort],
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["admin-dashboard", cod, city, month, day],
     queryFn: () => {
-      const p = new URLSearchParams({ city, sort });
+      const p = new URLSearchParams({ city, vendedor: cod });
       if (month) p.set("month", month);
       if (day) p.set("day", day);
       return apiFetch<Dashboard>(`/dashboard?${p.toString()}`);
     },
-    enabled: !!user,
+    enabled: user?.role === "admin",
   });
 
-  const sync = useMutation({
-    mutationFn: () => apiFetch("/sync", { method: "POST" }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast("Vendas atualizadas em tempo real", "success");
-    },
-    onError: () => toast("Falha ao atualizar dados", "error"),
-  });
+  if (user?.role !== "admin") return <Redirect href="/dashboard" />;
 
-  if (!user) return <Redirect href="/login" />;
-  if (user.role === "admin") return <Redirect href="/admin" />;
-
-  const header = (
-    <LogoHeader onMenu={() => setMenuOpen(true)} title="Painel de Performance" />
-  );
+  const title = params.nome || `Vendedor #${cod}`;
+  const header = <LogoHeader title={title} subtitle={`#${cod}`} onBack={() => router.back()} />;
 
   if (isLoading) {
     return (
@@ -115,12 +81,10 @@ export default function DashboardScreen() {
         {header}
         <View style={styles.centerFill}>
           <ActivityIndicator size="large" color={colors.brandPrimary} />
-          <Text style={styles.centerText}>Carregando desempenho…</Text>
         </View>
       </View>
     );
   }
-
   if (isError || !data) {
     return (
       <View style={styles.screen}>
@@ -128,7 +92,7 @@ export default function DashboardScreen() {
         <View style={styles.centerFill}>
           <Icon name="cloud-alert" size={40} color={colors.muted} />
           <Text style={styles.centerText}>Não foi possível carregar os dados.</Text>
-          <Pressable style={styles.retryBtn} onPress={() => refetch()} testID="retry-button">
+          <Pressable style={styles.retryBtn} onPress={() => refetch()}>
             <Text style={styles.retryText}>Tentar novamente</Text>
           </Pressable>
         </View>
@@ -141,31 +105,12 @@ export default function DashboardScreen() {
   const dayMode = scope.day_mode;
   const gapBehind = k.gap_valor > 0;
   const gapTone = gapBehind ? "error" : "success";
-
   const refMonth = `${data.period.ref_year}-${pad2(Number(data.period.ref_month) || 1)}`;
   const filterActive = !scope.is_ref_month || !!scope.day;
   const periodLabel = scope.day ? dayLong(scope.day) : monthLabel(scope.month);
 
-  function clearFilter() {
-    setMonth(null);
-    setDay(null);
-  }
-
-  const cq = clientQuery.trim().toLowerCase();
-  const shownClients = cq
-    ? data.clients.filter((c) => c.nome.toLowerCase().includes(cq) || c.cod_cliente.includes(cq))
-    : data.clients;
-
   const listHeader = (
     <View style={styles.listHeader}>
-      {sync.isPending && (
-        <View style={styles.syncBanner} testID="sync-banner">
-          <ActivityIndicator size="small" color={colors.onBrandTertiary} />
-          <Text style={styles.syncBannerText}>Atualizando vendas em tempo real…</Text>
-        </View>
-      )}
-
-      {/* Filtro de período */}
       <View style={styles.periodRow}>
         <Pressable style={styles.periodPill} onPress={() => setPeriodOpen(true)} testID="period-pill">
           <Icon name="calendar-range" size={18} color={colors.brandPrimary} />
@@ -175,17 +120,20 @@ export default function DashboardScreen() {
           <Icon name="chevron-down" size={18} color={colors.muted} />
         </Pressable>
         {filterActive && (
-          <Pressable style={styles.clearBtn} onPress={clearFilter} testID="clear-filter-button">
+          <Pressable
+            style={styles.clearBtn}
+            onPress={() => {
+              setMonth(null);
+              setDay(null);
+            }}
+            testID="clear-filter-button"
+          >
             <Icon name="close-circle" size={16} color={colors.onError} />
             <Text style={styles.clearText}>Limpar</Text>
           </Pressable>
         )}
-        <Pressable style={styles.iconBtn} onPress={() => sync.mutate()} testID="sync-button">
-          <Icon name="refresh" size={20} color={colors.brandPrimary} />
-        </Pressable>
       </View>
 
-      {/* Hero — barra horizontal de atingimento */}
       <View style={styles.hero}>
         <HeroBar
           real={k.pct_atingimento_realizado}
@@ -195,30 +143,17 @@ export default function DashboardScreen() {
         />
         <View style={styles.metaBox}>
           <Text style={styles.metaLabel}>{dayMode ? "META DO DIA" : "META DE VENDAS DO MÊS"}</Text>
-          <View style={styles.metaValueBox}>
-            <Text style={styles.metaValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-              {formatBRL(k.meta_vendas)}
+          <Text style={styles.metaValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+            {formatBRL(k.meta_vendas)}
+          </Text>
+          {!dayMode && (
+            <Text style={styles.metaHint}>
+              {`${scope.dias_uteis_decorridos} de ${scope.total_dias_uteis} dias úteis · ${scope.dias_uteis_restantes} restantes`}
             </Text>
-          </View>
-          {dayMode ? (
-            <Text style={styles.metaHint}>{scope.day ? dayLong(scope.day) : ""}</Text>
-          ) : (
-            <>
-              <Text style={styles.metaHint}>
-                {`${scope.dias_uteis_decorridos} de ${scope.total_dias_uteis} dias úteis · ${scope.dias_uteis_restantes} restantes`}
-              </Text>
-              <View style={styles.metaDayChip}>
-                <Icon name="target" size={14} color={colors.onBrandTertiary} />
-                <Text style={styles.metaDayText}>
-                  Meta do dia: <Text style={styles.metaDayValue}>{formatBRL(k.meta_do_dia)}</Text>/dia útil restante
-                </Text>
-              </View>
-            </>
           )}
         </View>
       </View>
 
-      {/* KPI grid */}
       <View style={styles.grid}>
         <KpiCard label={dayMode ? "Vendas do dia" : "Faturado"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
         <KpiCard label={dayMode ? "Previsionado do dia" : "Previsionado"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
@@ -231,39 +166,9 @@ export default function DashboardScreen() {
           tone={gapTone}
           testID="kpi-gap-valor"
         />
-        <KpiCard
-          label="Gap (%)"
-          value={formatPct(Math.abs(k.gap_pct))}
-          icon="percent-outline"
-          tone={gapTone}
-          testID="kpi-gap-pct"
-        />
+        <KpiCard label="Gap (%)" value={formatPct(Math.abs(k.gap_pct))} icon="percent-outline" tone={gapTone} testID="kpi-gap-pct" />
       </View>
 
-      {/* Ordenar */}
-      <Text style={styles.sectionTitle}>Ordenar clientes</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortRow}>
-        {SORTS.map((s) => {
-          const active = sort === s.key;
-          return (
-            <Pressable
-              key={s.key}
-              onPress={() => setSort(s.key)}
-              style={[
-                styles.sortChip,
-                { borderColor: active ? colors.onSurface : colors.borderStrong },
-              ]}
-              testID={`sort-${s.key}`}
-            >
-              <Text style={[styles.sortText, { color: active ? colors.onSurface : colors.muted }]}>
-                {s.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      {/* Filtro cidade */}
       <Text style={styles.sectionTitle}>Filtrar por cidade</Text>
     </View>
   );
@@ -272,33 +177,14 @@ export default function DashboardScreen() {
     <View style={styles.screen}>
       {header}
       <FlatList
-        data={shownClients}
+        data={data.clients}
         keyExtractor={(c) => c.cod_cliente}
-        renderItem={({ item }) => (
-          <ClientRow item={item} onPress={() => router.push(`/client/${item.cod_cliente}`)} />
-        )}
+        renderItem={({ item }) => <ClientRow item={item} onPress={() => router.push(`/client/${item.cod_cliente}`)} />}
         ListHeaderComponent={
           <>
             {listHeader}
             <CityChips cities={data.cities} selected={city} onSelect={setCity} />
-            <View style={styles.clientSearch}>
-              <Icon name="magnify" size={20} color={colors.muted} />
-              <TextInput
-                value={clientQuery}
-                onChangeText={setClientQuery}
-                placeholder="Localizar cliente por nome ou código…"
-                placeholderTextColor={colors.muted}
-                autoCapitalize="none"
-                style={styles.clientSearchInput}
-                testID="client-search"
-              />
-              {!!clientQuery && (
-                <Pressable onPress={() => setClientQuery("")} hitSlop={8} testID="client-search-clear">
-                  <Icon name="close-circle" size={18} color={colors.muted} />
-                </Pressable>
-              )}
-            </View>
-            <Text style={styles.clientsTitle}>{`Clientes (${shownClients.length})`}</Text>
+            <Text style={styles.clientsTitle}>{`Clientes (${data.clients.length})`}</Text>
           </>
         }
         ListEmptyComponent={
@@ -309,10 +195,7 @@ export default function DashboardScreen() {
         }
         contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brandPrimary} />
-        }
-        testID="dashboard-client-list"
+        testID="admin-vendedor-dashboard"
       />
 
       <PeriodFilterModal
@@ -328,31 +211,18 @@ export default function DashboardScreen() {
         }}
         onClose={() => setPeriodOpen(false)}
       />
-      <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
     </View>
   );
 }
 
-function HeroBar({
-  real,
-  prev,
-  meta,
-  realizado,
-}: {
-  real: number;
-  prev: number;
-  meta: number;
-  realizado: number;
-}) {
+function HeroBar({ real, prev, meta, realizado }: { real: number; prev: number; meta: number; realizado: number }) {
   const styles = useStyles();
   const { colors } = useTheme();
-
   const ritmo = prev > 0 ? real / prev : real >= 1 ? 1 : 0;
   const tone = ritmo >= 1 ? colors.success : ritmo >= 0.76 ? colors.warning : colors.error;
   const faturadoW = Math.max(0, Math.min(1, real)) * 100;
   const prevW = Math.max(0, Math.min(1, prev)) * 100;
   const falta = Math.max(0, meta - realizado);
-
   return (
     <View style={styles.heroBar}>
       <View style={styles.heroPctRow}>
@@ -360,17 +230,15 @@ function HeroBar({
           <Text style={[styles.heroPct, { color: tone }]}>{`${Math.round(real * 100)}%`}</Text>
           <Text style={styles.heroPctLabel}>Faturado</Text>
         </View>
-        <View style={[styles.heroPctCol, styles.heroPctColRight]}>
+        <View style={styles.heroPctColRight}>
           <Text style={[styles.heroPct, { color: colors.muted }]}>{`${Math.round(prev * 100)}%`}</Text>
           <Text style={styles.heroPctLabel}>Previsionado</Text>
         </View>
       </View>
-
       <View style={styles.heroTrack}>
         <View style={[styles.heroFillLight, { width: `${prevW}%`, backgroundColor: tone }]} />
         <View style={[styles.heroFill, { width: `${faturadoW}%`, backgroundColor: tone }]} />
       </View>
-
       <Text style={styles.heroFalta}>
         Falta <Text style={styles.heroFaltaValue}>{formatBRL(falta)}</Text> para 100% da meta
       </Text>
@@ -386,16 +254,6 @@ const useStyles = makeStyles((c) => ({
   retryText: { fontFamily: fonts.bold, color: c.onBrandPrimary, fontSize: 14 },
 
   listHeader: { gap: 12 },
-  syncBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: c.brandTertiary,
-    borderRadius: 10,
-    padding: 12,
-  },
-  syncBannerText: { fontFamily: fonts.medium, fontSize: 13, color: c.onBrandTertiary },
-
   periodRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   periodPill: {
     flex: 1,
@@ -421,81 +279,26 @@ const useStyles = makeStyles((c) => ({
   },
   clearText: { fontFamily: fonts.bold, fontSize: 13, color: c.onError },
 
-  hero: {
-    backgroundColor: c.surfaceSecondary,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: c.border,
-    padding: 20,
-    gap: 14,
-  },
+  hero: { backgroundColor: c.surfaceSecondary, borderRadius: 20, borderWidth: 1, borderColor: c.border, padding: 20, gap: 14 },
   heroBar: { gap: 14 },
   heroPctRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   heroPctCol: { alignItems: "flex-start" },
   heroPctColRight: { alignItems: "flex-end" },
-  heroPct: { fontFamily: fonts.numBold, fontSize: 42, lineHeight: 46 },
-  heroPctLabel: { fontFamily: fonts.semibold, fontSize: 13, color: c.muted, marginTop: 0 },
-  heroTrack: {
-    height: 16,
-    borderRadius: 4,
-    backgroundColor: c.surfaceTertiary,
-    overflow: "hidden",
-    position: "relative",
-  },
-  heroFillLight: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 0, opacity: 0.3 },
-  heroFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 0 },
+  heroPct: { fontFamily: fonts.numBold, fontSize: 40, lineHeight: 44 },
+  heroPctLabel: { fontFamily: fonts.semibold, fontSize: 13, color: c.muted },
+  heroTrack: { height: 16, borderRadius: 4, backgroundColor: c.surfaceTertiary, overflow: "hidden", position: "relative" },
+  heroFillLight: { position: "absolute", left: 0, top: 0, bottom: 0, opacity: 0.3 },
+  heroFill: { position: "absolute", left: 0, top: 0, bottom: 0 },
   heroFalta: { fontFamily: fonts.regular, fontSize: 13, color: c.muted },
   heroFaltaValue: { fontFamily: fonts.numBold, fontSize: 13, color: c.onSurface },
-  iconBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: c.border,
-    backgroundColor: c.surfaceSecondary,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  clientSearch: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: c.surfaceTertiary,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: c.border,
-    paddingHorizontal: 14,
-    height: 48,
-    marginTop: 10,
-  },
-  clientSearchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 15, color: c.onSurface },
-  metaBox: { alignItems: "center", gap: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: c.divider, width: "100%" },
-  metaLabel: { fontFamily: fonts.medium, fontSize: 11, color: c.muted, letterSpacing: 0.5, marginTop: 8 },
-  metaValueBox: {
-    alignSelf: "center",
-    alignItems: "center",
-    paddingVertical: 2,
-  },
-  metaValue: { fontFamily: fonts.numBold, fontSize: 28, color: c.onSurface },
+
+  metaBox: { alignItems: "center", gap: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.divider, width: "100%" },
+  metaLabel: { fontFamily: fonts.medium, fontSize: 11, color: c.muted, letterSpacing: 0.5 },
+  metaValue: { fontFamily: fonts.numBold, fontSize: 26, color: c.onSurface },
   metaHint: { fontFamily: fonts.regular, fontSize: 12, color: c.muted },
-  metaDayChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: c.brandTertiary,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginTop: 4,
-  },
-  metaDayText: { fontFamily: fonts.regular, fontSize: 12, color: c.onBrandTertiary },
-  metaDayValue: { fontFamily: fonts.numBold, fontSize: 12, color: c.onBrandTertiary },
 
   grid: { flexDirection: "row", gap: 12 },
   sectionTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface, marginTop: 4 },
-  sortRow: { gap: 8, paddingVertical: 2 },
-  sortChip: { height: 36, flexShrink: 0, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1.5, justifyContent: "center", alignItems: "center" },
-  sortText: { fontFamily: fonts.semibold, fontSize: 13 },
   clientsTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface, marginTop: 14, marginBottom: 2 },
   empty: { alignItems: "center", gap: 10, paddingVertical: 40 },
 }));

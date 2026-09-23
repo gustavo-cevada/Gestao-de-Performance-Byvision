@@ -55,3 +55,13 @@ App mobile (com acesso web/desktop) para vendedores da Byvision acompanharem met
 
 ## Credenciais
 Ver /app/memory/test_credentials.md
+
+### Iteração 4 (2026-06) — Painel Administrativo (multi-vendedor)
+- Área Admin (web/desktop) no mesmo app Expo, protegida por role=admin, mesmo MongoDB (reflete em tempo real).
+- Login admin passa a redirecionar para /admin (não mais /dashboard). Menu lateral específico por cargo.
+- /admin: visão geral de TODOS os vendedores (API DW = 27) com faturado/meta/% do mês (cor por ritmo), contagem de clientes e status (ativos/pré/inativos). Botão "Sincronizar" por vendedor (sync profundo 12m em background, com polling) e "Sincronizar todos". Atalhos para Metas e Usuários.
+- /admin/vendedor/[cod]: drill-down no desempenho do vendedor (hero + KPIs + lista de clientes) com filtro de período (meses anteriores carregam via janela 12m do sync).
+- /admin/metas: gestão de metas com seletor de vendedor (apenas sincronizados).
+- /admin/users: CRUD de usuários (criar/editar cargo+cod_vendedor+email, ativar/desativar, redefinir senha). Bloqueio de auto-desativar/rebaixar o próprio admin.
+- Backend: /api/admin/vendedores, /api/admin/vendedores/{cod}/sync, /api/admin/vendedores/sync-all; /api/auth/users (GET/POST/PATCH) e /users/{id}/reset-password. dashboard/crm/clients/metas passam a ter escopo por cod_vendedor (vendedor só vê sua carteira; admin usa ?vendedor=). Clientes agora gravam cod_vendedor; sync generalizado por vendedor com paginação (>500 clientes).
+- Testado (backend + frontend) pelo testing agent: sem bugs. Backlog remanescente: migrar shadow* → boxShadow.

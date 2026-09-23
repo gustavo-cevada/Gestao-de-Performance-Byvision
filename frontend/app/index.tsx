@@ -16,5 +16,5 @@ export default function Index() {
     );
   }
 
-  return <Redirect href={user ? "/dashboard" : "/login"} />;
+  return <Redirect href={user ? (user.role === "admin" ? "/admin" : "/dashboard") : "/login"} />;
 }

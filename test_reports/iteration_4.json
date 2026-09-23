@@ -1,0 +1,39 @@
+{
+  "summary": "Full backend + frontend regression of the new Painel Administrativo. Backend pytest suite for admin panel: 14 passed / 1 skipped (14/15) on live preview. Frontend admin flows on Expo web preview (390x844): admin login->/admin with 'DESEMPENHO GERAL DO MÊS' summary, atalhos Metas/Usuários, VAGNER (#204) synced row rendering 36% (R$ 32.854,20 / R$ 91.375,00 · 24 ativos · 5 pré · 30 inativos), detalhe do vendedor (/admin/vendedor/204) com hero + KPIs + filtro periodo, /admin/metas com picker VAGNER pré-selecionado + save, /admin/users com FAB + modal criar. VAGNER login segue para /dashboard e é bloqueado de /admin. Only pre-existing non-blocking react-native-web 'shadow*' deprecation warning present.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web shadow props", "issue": "Non-blocking console warning 'shadow* style props are deprecated. Use boxShadow.' persists (same as iteration 2/3)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin_panel.py",
+    "/app/backend/tests/test_byvision_api.py",
+    "/app/test_reports/pytest/admin_panel_results.xml"
+  ],
+  "action_items": [
+    "(LOW) Migrate remaining shadow* RN styles to boxShadow to silence deprecation warning.",
+    "(LOW) test_vendedor_cannot_see_other_vendedor_client foi SKIPPED porque a lista /admin/metas?vendedor=68 retornou sem clientes após o sync (cod 68 aparentemente possui carteira vazia no DW). Ainda assim, o guard existe em server.py:481-482 (retorna 404 quando cod_vendedor do cliente != cod_vendedor do usuário)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:_scope_vendedor exige ?vendedor= para admin e força cod_vendedor do JWT para vendedor — comportamento verificado (400 sem param como admin; VAGNER ignora ?vendedor=999 e devolve o próprio dataset).",
+    "auth.py: senhas gravadas com bcrypt; _public_full nunca inclui password_hash — verificado via GET /api/auth/users. Bloqueio de auto-desativar/rebaixar o admin logado ok (409 em ambos os casos).",
+    "server.py:/admin/vendedores agrega faturado/meta/status por vendedor a partir de db.clients já sincronizados; flag synced considera deep_synced OU presença de dados agregados. Verificado com VAGNER retornando synced=True + totals plausíveis.",
+    "server.py:/admin/vendedores/{cod}/sync dispara asyncio.create_task de _bg_vendedor_sync; retorna {ok:true, syncing:true} imediatamente; documento vendedor recebe syncing=True antes de rodar. Verificado com cod=68 (sync começou, terminou <60s, flag voltou a False, synced=True depois).",
+    "server.py:/clients/{cod} bloqueia acesso cross-vendedor (linhas 481-482): if user.role != admin and cod_vendedor do cliente != user.cod_vendedor -> 404. Guard revisado no código; teste automatizado foi skipped por falta de dados de outro vendedor sincronizado.",
+    "frontend/app/index.tsx: redireciona baseado em role (admin -> /admin, vendedor -> /dashboard) — verificado.",
+    "frontend/app/admin.tsx: usa useQuery com refetchInterval=3000 enquanto algum vendedor está syncing — bom para atualização em tempo real do progresso.",
+    "frontend/app/admin/metas.tsx: seleciona automaticamente o primeiro vendedor sincronizado (linhas 50-56); VendedorPicker é filtrado por onlySynced. Verificado: VAGNER pré-selecionado.",
+    "frontend/app/admin/users.tsx: FAB, modal com role segment, campo cod_vendedor visível apenas quando role=vendedor, isSelf desabilita 'Desativar acesso' e 'Vendedor'. Verificado modal abre corretamente."
+  ],
+  "updated_files": ["/app/backend/tests/test_admin_panel.py"],
+  "success_rate": {"backend": "100% (14/14 executados; 1 skipped por dependência de dado externo)", "frontend": "100% para os 6 fluxos aceitos (admin login/home, detalhe vendedor, metas, users+modal, VAGNER login e bloqueio de admin)"},
+  "seed_data_creation": "Foram criados usuários com prefixo TEST_* pelo fluxo de testes (create/edit/reset/disable). Todos ficam com disabled=True no final. Um usuário 'TEST_a7d9b1da' aparece desativado na lista de /admin/users da UI (herdado deste run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Ao retestar, considere que:  (1) EXPO_PUBLIC_BACKEND_URL é a única base pública correta; (2) admin/admin123 e VAGNER/vagner123 seedados no startup; (3) testIDs úteis: admin-vendedor-list, vendedor-row-<cod>, nav-metas, nav-users, sync-all-button, sync-vendedor-<cod>, vendedor-search, admin-meta-list, meta-input-<cod>, save-metas-button, vendedor-pill, admin-users-list, add-user-fab, user-form-modal, user-username, user-password, user-nome, user-email, role-admin, role-vendedor, user-cod, user-disabled, user-save, reset-modal, reset-input, reset-confirm; (4) sync do cod=68 é rápido; sync-all deve ser evitado — muito pesado; (5) apenas VAGNER (204) tem carteira sincronizada por padrão além de qualquer vendedor que tenha rodado /sync durante testes anteriores; (6) usuários TEST_* podem se acumular na lista - main agent pode limpá-los diretamente no Mongo se quiser.",
+  "rca_of_issue": "Não aplicável — feature nova validada com sucesso. Sem bugs identificados."
+}

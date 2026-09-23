@@ -101,3 +101,99 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## user_problem_statement: "Painel Administrativo (web/desktop) para o app Byvision: role admin, ver desempenho de TODOS os vendedores (27), editar metas por vendedor, gerenciar usuários (CRUD + reset senha). Mesmo MongoDB do app mobile."
+
+## backend:
+##   - task: "Admin: visão geral de vendedores (/api/admin/vendedores) + sync por vendedor e sync-all"
+##     implemented: true
+##     working: "NA"
+##     file: "backend/server.py, backend/dw_client.py"
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Novo endpoint agrega faturado/meta/status por vendedor. Sync profundo (12m) por vendedor em background com flag syncing. Escopo cod_vendedor adicionado a dashboard/crm/clients/metas."
+##   - task: "Admin: gestão de usuários (GET/POST/PATCH /api/auth/users + reset-password)"
+##     implemented: true
+##     working: "NA"
+##     file: "backend/auth.py"
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "CRUD com bcrypt, dup username 409, bloqueio de auto-desativar/rebaixar admin logado, reset senha. Validado por curl (login/list/create/dup/patch/reset)."
+##   - task: "Escopo por vendedor em dashboard/crm/clients (vendedor só vê própria carteira; admin passa ?vendedor=)"
+##     implemented: true
+##     working: "NA"
+##     file: "backend/server.py"
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Vendedor VAGNER continua funcionando (cod 204). Admin exige ?vendedor= nesses endpoints."
+
+## frontend:
+##   - task: "Tela Painel Admin (/admin): overview vendedores, sync, atalhos Metas/Usuários"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/app/admin.tsx"
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Login admin redireciona para /admin. Smoke test OK (screenshot). Poll enquanto sincroniza."
+##   - task: "Tela Gestão de Metas por vendedor (/admin/metas) com seletor de vendedor"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/app/admin/metas.tsx"
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Seletor mostra apenas vendedores sincronizados. Salvar reflete no dashboard/overview."
+##   - task: "Tela Usuários (/admin/users): CRUD + reset senha"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/app/admin/users.tsx"
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Modal criar/editar, toggle desativar, reset senha."
+##   - task: "Detalhe de desempenho do vendedor (/admin/vendedor/[cod]) com filtro de mês"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/app/admin/vendedor/[cod].tsx"
+##     priority: "medium"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Reusa endpoint /dashboard?vendedor=. Meses anteriores carregam via filtro."
+
+## metadata:
+##   created_by: "main_agent"
+##   version: "1.1"
+##   test_sequence: 1
+
+## test_plan:
+##   current_focus:
+##     - "Admin: visão geral de vendedores (/api/admin/vendedores) + sync por vendedor e sync-all"
+##     - "Admin: gestão de usuários (GET/POST/PATCH /api/auth/users + reset-password)"
+##     - "Escopo por vendedor em dashboard/crm/clients"
+##     - "Tela Painel Admin (/admin)"
+##     - "Tela Gestão de Metas por vendedor"
+##     - "Tela Usuários"
+##   stuck_tasks: []
+##   test_all: false
+##   test_priority: "high_first"
+
+## agent_communication:
+##     -agent: "main"
+##     -comment: "Implementado painel admin multi-vendedor. Testar backend (endpoints admin, escopo, users CRUD) e frontend (login admin->/admin, overview, metas por vendedor, users CRUD, drill-down). Credenciais: admin/admin123, VAGNER/vagner123. VAGNER(204) já sincronizado; outros vendedores precisam de sync (botão) - NÃO disparar sync-all de todos os 27 no teste (pesado); testar sync de 1 vendedor pequeno é opcional."

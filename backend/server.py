@@ -20,68 +20,115 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Byvision Performance API")
 api = APIRouter(prefix="/api")
 
-_sync_lock = asyncio.Lock()
+_syncing_vendedores: set[int] = set()
 
 
 # ---------------------------------------------------------------------------
-# Sync: busca dados da DW API e grava no cache Mongo
+# Sync: busca dados da DW API e grava no cache Mongo (por vendedor)
 # ---------------------------------------------------------------------------
-async def run_sync() -> dict:
-    if _sync_lock.locked():
-        # Sync ja em andamento: espera terminar e retorna estado atual.
-        async with _sync_lock:
-            pass
-        return await get_period()
+async def refresh_period() -> dict:
+    """Atualiza o periodo de referencia global (dias uteis) a partir da DW."""
+    period = await asyncio.to_thread(dw.periodo_referencia)
+    settings = {"_id": "period", **period, "last_sync": datetime.now(timezone.utc).isoformat()}
+    await db.settings.update_one({"_id": "period"}, {"$set": settings}, upsert=True)
+    return {k: v for k, v in settings.items() if k != "_id"}
 
-    async with _sync_lock:
-        logger.info("Sync DW: iniciando...")
-        period = await asyncio.to_thread(dw.periodo_referencia)
-        vendedor = await asyncio.to_thread(dw.get_vendedor_info)
-        clientes = await asyncio.to_thread(dw.get_clientes)
-        cods = [str(c.get("cod_cliente")) for c in clientes]
 
-        # janela de 12 meses de compras faturadas (para filtro por mes/dia)
-        ry, rm = int(period["ref_year"]), int(period["ref_month"])
-        wy = ry - 1
-        window_start = f"{wy}-{rm:02d}-01"
-        ref_prefix = f"{ry}-{rm:02d}"
+async def refresh_vendedores() -> list[dict]:
+    """Upsert da lista de vendedores da DW (preserva flags de sync)."""
+    vends = await asyncio.to_thread(dw.get_all_vendedores)
+    for v in vends:
+        await db.vendedores.update_one(
+            {"cod_vendedor": v["cod_vendedor"]}, {"$set": dict(v)}, upsert=True
+        )
+    return vends
 
-        janelas = await asyncio.to_thread(dw.compras_window, cods, window_start)
 
-        for c in clientes:
-            cod = str(c.get("cod_cliente"))
-            compras_f = janelas.get(cod, [])
-            faturado_mes = round(sum(r["v"] for r in compras_f if r["d"][:7] == ref_prefix), 2)
-            doc = dict(c)
-            doc["cod_cliente"] = cod
-            doc["faturado_mes"] = faturado_mes
-            doc["compras_f"] = compras_f
-            await db.clients.update_one(
-                {"cod_cliente": cod}, {"$set": doc}, upsert=True
+async def run_vendedor_sync(cod_vendedor: int) -> dict:
+    """Sync profundo (janela de 12 meses) dos clientes de um vendedor."""
+    cod_vendedor = int(cod_vendedor)
+    logger.info("Sync DW vendedor %s: iniciando...", cod_vendedor)
+    period = await refresh_period()
+    clientes = await asyncio.to_thread(dw.get_clientes, cod_vendedor)
+    cods = [str(c.get("cod_cliente")) for c in clientes]
+
+    ry, rm = int(period["ref_year"]), int(period["ref_month"])
+    wy = ry - 1
+    window_start = f"{wy}-{rm:02d}-01"
+    ref_prefix = f"{ry}-{rm:02d}"
+
+    janelas = await asyncio.to_thread(dw.compras_window, cods, window_start)
+
+    for c in clientes:
+        cod = str(c.get("cod_cliente"))
+        compras_f = janelas.get(cod, [])
+        faturado_mes = round(sum(r["v"] for r in compras_f if r["d"][:7] == ref_prefix), 2)
+        doc = dict(c)
+        doc["cod_cliente"] = cod
+        doc["cod_vendedor"] = cod_vendedor
+        doc["faturado_mes"] = faturado_mes
+        doc["compras_f"] = compras_f
+        await db.clients.update_one({"cod_cliente": cod}, {"$set": doc}, upsert=True)
+        existing = await db.metas.find_one({"cod_cliente": cod})
+        if not existing:
+            await db.metas.update_one(
+                {"cod_cliente": cod},
+                {"$setOnInsert": {"cod_cliente": cod, "meta": METAS_SEED.get(cod, 0.0)}},
+                upsert=True,
             )
-            # semear meta se ainda nao existe
-            existing = await db.metas.find_one({"cod_cliente": cod})
-            if not existing:
-                await db.metas.update_one(
-                    {"cod_cliente": cod},
-                    {"$setOnInsert": {"cod_cliente": cod, "meta": METAS_SEED.get(cod, 0.0)}},
-                    upsert=True,
-                )
 
-        settings = {
-            "_id": "period",
-            **period,
-            "vendedor": vendedor,
-            "last_sync": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.settings.update_one({"_id": "period"}, {"$set": settings}, upsert=True)
-        logger.info("Sync DW: concluido. %d clientes.", len(clientes))
-        return {k: v for k, v in settings.items() if k != "_id"}
+    await db.vendedores.update_one(
+        {"cod_vendedor": cod_vendedor},
+        {"$set": {
+            "cod_vendedor": cod_vendedor,
+            "deep_synced": True,
+            "synced_period": ref_prefix,
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+            "qt_synced": len(clientes),
+        }},
+        upsert=True,
+    )
+    logger.info("Sync DW vendedor %s: concluido (%d clientes).", cod_vendedor, len(clientes))
+    return {"cod_vendedor": cod_vendedor, "qt": len(clientes)}
+
+
+async def _bg_vendedor_sync(cod_vendedor: int) -> None:
+    cod_vendedor = int(cod_vendedor)
+    if cod_vendedor in _syncing_vendedores:
+        return
+    _syncing_vendedores.add(cod_vendedor)
+    await db.vendedores.update_one(
+        {"cod_vendedor": cod_vendedor}, {"$set": {"syncing": True}}, upsert=True
+    )
+    try:
+        await run_vendedor_sync(cod_vendedor)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Sync vendedor %s falhou: %s", cod_vendedor, exc)
+    finally:
+        _syncing_vendedores.discard(cod_vendedor)
+        await db.vendedores.update_one(
+            {"cod_vendedor": cod_vendedor}, {"$set": {"syncing": False}}
+        )
+
+
+async def _bg_sync_all() -> None:
+    vends = await refresh_vendedores()
+    for v in vends:
+        await _bg_vendedor_sync(v["cod_vendedor"])
 
 
 async def get_period() -> dict:
     s = await db.settings.find_one({"_id": "period"}, {"_id": 0})
     return s or {}
+
+
+def _scope_vendedor(user: dict, vendedor: int | None) -> int:
+    """Resolve o cod_vendedor de escopo: admin usa o param; vendedor usa o seu."""
+    if user.get("role") == "admin":
+        if vendedor is None:
+            raise HTTPException(status_code=400, detail="Parametro 'vendedor' obrigatorio para admin")
+        return int(vendedor)
+    return int(user.get("cod_vendedor"))
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +210,7 @@ def compute_pace(meta: float, faturado: float, total_bd: int, elapsed_bd: int) -
 
 
 async def _load_clients_scoped(
-    sel_month: str, day: str | None, total_bd: int, elapsed_bd: int
+    sel_month: str, day: str | None, total_bd: int, elapsed_bd: int, cod_vendedor: int
 ) -> tuple[list[dict], set[str]]:
     """Carrega clientes com faturado e metricas para o escopo (mes ou dia).
 
@@ -173,7 +220,7 @@ async def _load_clients_scoped(
     out: list[dict] = []
     months: set[str] = set()
 
-    async for c in db.clients.find({}, {"_id": 0}):
+    async for c in db.clients.find({"cod_vendedor": int(cod_vendedor)}, {"_id": 0}):
         cod = c["cod_cliente"]
         meta_mensal = float(metas.get(cod, 0.0))
         compras = c.get("compras_f") or []
@@ -226,8 +273,10 @@ async def dashboard(
     month: str | None = Query(default=None),   # "YYYY-MM"
     day: str | None = Query(default=None),      # "YYYY-MM-DD"
     sort: str = Query(default="atingimento_desc"),
+    vendedor: int | None = Query(default=None),
     user=Depends(current_user),
 ):
+    cod_vendedor = _scope_vendedor(user, vendedor)
     period = await get_period()
     ry = int(period.get("ref_year") or datetime.now().year)
     rm = int(period.get("ref_month") or datetime.now().month)
@@ -258,7 +307,7 @@ async def dashboard(
         elapsed_bd = 0  # mes futuro
 
     day_mode = bool(day)
-    clients, months = await _load_clients_scoped(sel_month, day, total_bd, elapsed_bd)
+    clients, months = await _load_clients_scoped(sel_month, day, total_bd, elapsed_bd, cod_vendedor)
 
     cities = sorted({c["cidade"] for c in clients if c["cidade"] and c["cidade"] != "-"})
     if city and city != "TODAS":
@@ -325,7 +374,8 @@ async def dashboard(
 
 
 @api.get("/crm")
-async def crm(user=Depends(current_user)):
+async def crm(vendedor: int | None = Query(default=None), user=Depends(current_user)):
+    cod_vendedor = _scope_vendedor(user, vendedor)
     period = await get_period()
     ry = int(period.get("ref_year") or datetime.now().year)
     rm = int(period.get("ref_month") or datetime.now().month)
@@ -337,7 +387,7 @@ async def crm(user=Depends(current_user)):
     raw = []
     cur_fat: dict[str, float] = {}
 
-    async for c in db.clients.find({}, {"_id": 0}):
+    async for c in db.clients.find({"cod_vendedor": int(cod_vendedor)}, {"_id": 0}):
         cod = c["cod_cliente"]
         compras = c.get("compras_f") or []
         fat12 = round(sum(r["v"] for r in compras), 2)
@@ -427,6 +477,9 @@ async def client_detail(cod: str, user=Depends(current_user)):
     c = await db.clients.find_one({"cod_cliente": str(cod)}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado")
+    # vendedor so pode ver clientes da sua carteira
+    if user.get("role") != "admin" and int(c.get("cod_vendedor") or -1) != int(user.get("cod_vendedor") or -2):
+        raise HTTPException(status_code=404, detail="Cliente nao encontrado")
     meta_doc = await db.metas.find_one({"cod_cliente": str(cod)}, {"_id": 0})
     meta = float(meta_doc["meta"]) if meta_doc else 0.0
     period = await get_period()
@@ -490,10 +543,15 @@ class MetasBulk(BaseModel):
 
 
 @api.get("/admin/metas")
-async def admin_list_metas(user=Depends(require_role("admin"))):
+async def admin_list_metas(
+    vendedor: int | None = Query(default=None), user=Depends(require_role("admin"))
+):
     metas = {m["cod_cliente"]: m["meta"] async for m in db.metas.find({}, {"_id": 0})}
+    q: dict = {}
+    if vendedor is not None:
+        q["cod_vendedor"] = int(vendedor)
     clients = []
-    async for c in db.clients.find({}, {"_id": 0, "compras_f": 0}):
+    async for c in db.clients.find(q, {"_id": 0, "compras_f": 0}):
         cod = c["cod_cliente"]
         clients.append({
             "cod_cliente": cod,
@@ -520,19 +578,116 @@ async def admin_update_metas(body: MetasBulk, user=Depends(require_role("admin")
 
 
 # ---------------------------------------------------------------------------
+# Admin: visao geral de vendedores
+# ---------------------------------------------------------------------------
+@api.get("/admin/vendedores")
+async def admin_vendedores(user=Depends(require_role("admin"))):
+    if await db.vendedores.count_documents({}) == 0:
+        try:
+            await refresh_vendedores()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("refresh_vendedores falhou: %s", exc)
+
+    metas = {m["cod_cliente"]: m["meta"] async for m in db.metas.find({}, {"_id": 0})}
+
+    # agregacao por vendedor a partir dos clientes ja sincronizados
+    agg: dict[int, dict] = {}
+    async for c in db.clients.find({}, {"_id": 0, "compras_f": 0}):
+        cv = int(c.get("cod_vendedor") or 0)
+        a = agg.setdefault(cv, {"faturado": 0.0, "meta": 0.0, "total": 0,
+                                "ativos": 0, "pre_inativos": 0, "inativos": 0})
+        a["total"] += 1
+        a["faturado"] += float(c.get("faturado_mes") or 0.0)
+        a["meta"] += float(metas.get(c["cod_cliente"], 0.0))
+        st = status_crm(c)
+        if st == "ATIVO":
+            a["ativos"] += 1
+        elif st == "PRE_INATIVO":
+            a["pre_inativos"] += 1
+        else:
+            a["inativos"] += 1
+
+    vendedores = []
+    tot_fat = tot_meta = 0.0
+    async for v in db.vendedores.find({}, {"_id": 0}).sort("qt_clientes", -1):
+        cv = int(v["cod_vendedor"])
+        a = agg.get(cv)
+        synced = bool(v.get("deep_synced")) or bool(a)
+        row = {
+            "cod_vendedor": cv,
+            "nome": v.get("nome"),
+            "email": v.get("email"),
+            "ativo": v.get("ativo"),
+            "qt_clientes": int(v.get("qt_clientes") or 0),
+            "synced": synced,
+            "syncing": cv in _syncing_vendedores or bool(v.get("syncing")),
+            "synced_at": v.get("synced_at"),
+        }
+        if a:
+            faturado = round(a["faturado"], 2)
+            meta = round(a["meta"], 2)
+            row.update({
+                "faturado": faturado,
+                "meta": meta,
+                "pct": round(faturado / meta, 4) if meta > 0 else None,
+                "total_clientes": a["total"],
+                "ativos": a["ativos"],
+                "pre_inativos": a["pre_inativos"],
+                "inativos": a["inativos"],
+            })
+            tot_fat += faturado
+            tot_meta += meta
+        vendedores.append(row)
+
+    period = await get_period()
+    ry = int(period.get("ref_year") or datetime.now().year)
+    rm = int(period.get("ref_month") or datetime.now().month)
+    n_synced = sum(1 for v in vendedores if v["synced"])
+    return {
+        "ref_month": f"{ry}-{rm:02d}",
+        "period": period,
+        "totals": {
+            "faturado": round(tot_fat, 2),
+            "meta": round(tot_meta, 2),
+            "pct": round(tot_fat / tot_meta, 4) if tot_meta > 0 else None,
+            "vendedores": len(vendedores),
+            "sincronizados": n_synced,
+        },
+        "vendedores": vendedores,
+    }
+
+
+@api.post("/admin/vendedores/sync-all")
+async def admin_sync_all(user=Depends(require_role("admin"))):
+    asyncio.create_task(_bg_sync_all())
+    return {"ok": True, "syncing": True}
+
+
+@api.post("/admin/vendedores/{cod}/sync")
+async def admin_sync_vendedor(cod: int, user=Depends(require_role("admin"))):
+    asyncio.create_task(_bg_vendedor_sync(int(cod)))
+    return {"ok": True, "syncing": True}
+
+
+# ---------------------------------------------------------------------------
 # Sync / status
 # ---------------------------------------------------------------------------
 @api.post("/sync")
 async def sync_now(user=Depends(current_user)):
-    settings = await run_sync()
-    return {"ok": True, "settings": settings}
+    if user.get("role") == "admin":
+        await refresh_period()
+        await refresh_vendedores()
+        return {"ok": True}
+    cod = int(user["cod_vendedor"])
+    await run_vendedor_sync(cod)
+    return {"ok": True}
 
 
 @api.get("/status")
 async def status(user=Depends(current_user)):
     period = await get_period()
     n = await db.clients.count_documents({})
-    return {"period": period, "total_clientes": n, "syncing": _sync_lock.locked()}
+    return {"period": period, "total_clientes": n, "syncing": bool(_syncing_vendedores)}
 
 
 @api.get("/")
@@ -555,15 +710,17 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     await seed_users()
-    n = await db.clients.count_documents({})
-    if n == 0:
-        # primeira carga em background para nao travar o boot
-        asyncio.create_task(_safe_initial_sync())
+    # garante lista de vendedores + periodo em background
+    asyncio.create_task(_safe_initial_sync())
 
 
 async def _safe_initial_sync():
     try:
-        await run_sync()
+        await refresh_period()
+        await refresh_vendedores()
+        n = await db.clients.count_documents({"cod_vendedor": dw.VENDEDOR_COD})
+        if n == 0:
+            await run_vendedor_sync(dw.VENDEDOR_COD)
     except Exception as exc:  # noqa: BLE001
         logger.error("Sync inicial falhou: %s", exc)
 
