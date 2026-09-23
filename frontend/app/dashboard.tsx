@@ -6,7 +6,6 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -17,14 +16,14 @@ import { apiFetch } from "@/src/api/client";
 import { CityChips } from "@/src/components/city-chips";
 import { ClientItem, ClientRow } from "@/src/components/client-row";
 import { Icon } from "@/src/components/icon";
-import { KpiCard } from "@/src/components/kpi-card";
 import { LogoHeader } from "@/src/components/logo-header";
 import { MenuSheet } from "@/src/components/menu-sheet";
+import { PerformanceSummary } from "@/src/components/performance-summary";
 import { PeriodFilterModal } from "@/src/components/period-filter-modal";
+import { SortChips } from "@/src/components/sort-chips";
 import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/context/auth";
 import { dayLong, monthLabel, pad2 } from "@/src/lib/date";
-import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -57,13 +56,6 @@ type Dashboard = {
   total_clientes: number;
   clients: ClientItem[];
 };
-
-const SORTS = [
-  { key: "atingimento_desc", label: "Maior atingimento" },
-  { key: "atingimento_asc", label: "Menor atingimento" },
-  { key: "faturado_desc", label: "Mais vendido" },
-  { key: "faturado_asc", label: "Menos vendido" },
-];
 
 export default function DashboardScreen() {
   const styles = useStyles();
@@ -138,9 +130,6 @@ export default function DashboardScreen() {
 
   const k = data.kpi;
   const scope = data.scope;
-  const dayMode = scope.day_mode;
-  const gapBehind = k.gap_valor > 0;
-  const gapTone = gapBehind ? "error" : "success";
 
   const refMonth = `${data.period.ref_year}-${pad2(Number(data.period.ref_month) || 1)}`;
   const filterActive = !scope.is_ref_month || !!scope.day;
@@ -185,83 +174,12 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
 
-      {/* Hero — barra horizontal de atingimento */}
-      <View style={styles.hero}>
-        <HeroBar
-          real={k.pct_atingimento_realizado}
-          prev={k.pct_atingimento_provisionado}
-          meta={k.meta_vendas}
-          realizado={k.vendas_realizadas}
-        />
-        <View style={styles.metaBox}>
-          <Text style={styles.metaLabel}>{dayMode ? "META DO DIA" : "META DE VENDAS DO MÊS"}</Text>
-          <View style={styles.metaValueBox}>
-            <Text style={styles.metaValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-              {formatBRL(k.meta_vendas)}
-            </Text>
-          </View>
-          {dayMode ? (
-            <Text style={styles.metaHint}>{scope.day ? dayLong(scope.day) : ""}</Text>
-          ) : (
-            <>
-              <Text style={styles.metaHint}>
-                {`${scope.dias_uteis_decorridos} de ${scope.total_dias_uteis} dias úteis · ${scope.dias_uteis_restantes} restantes`}
-              </Text>
-              <View style={styles.metaDayChip}>
-                <Icon name="target" size={14} color={colors.onBrandTertiary} />
-                <Text style={styles.metaDayText}>
-                  Meta do dia: <Text style={styles.metaDayValue}>{formatBRL(k.meta_do_dia)}</Text>/dia útil restante
-                </Text>
-              </View>
-            </>
-          )}
-        </View>
-      </View>
-
-      {/* KPI grid */}
-      <View style={styles.grid}>
-        <KpiCard label={dayMode ? "Vendas do dia" : "Faturado"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
-        <KpiCard label={dayMode ? "Previsionado do dia" : "Previsionado"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
-      </View>
-      <View style={styles.grid}>
-        <KpiCard
-          label={gapBehind ? "Gap (falta) R$" : "Gap (à frente) R$"}
-          value={formatBRL(Math.abs(k.gap_valor))}
-          icon={gapBehind ? "trending-down" : "trending-up"}
-          tone={gapTone}
-          testID="kpi-gap-valor"
-        />
-        <KpiCard
-          label="Gap (%)"
-          value={formatPct(Math.abs(k.gap_pct))}
-          icon="percent-outline"
-          tone={gapTone}
-          testID="kpi-gap-pct"
-        />
-      </View>
+      {/* Resumo de performance: % + gráfico + KPIs */}
+      <PerformanceSummary k={k} scope={scope} />
 
       {/* Ordenar */}
       <Text style={styles.sectionTitle}>Ordenar clientes</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortRow}>
-        {SORTS.map((s) => {
-          const active = sort === s.key;
-          return (
-            <Pressable
-              key={s.key}
-              onPress={() => setSort(s.key)}
-              style={[
-                styles.sortChip,
-                { borderColor: active ? colors.onSurface : colors.borderStrong },
-              ]}
-              testID={`sort-${s.key}`}
-            >
-              <Text style={[styles.sortText, { color: active ? colors.onSurface : colors.muted }]}>
-                {s.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <SortChips sort={sort} onChange={setSort} />
 
       {/* Filtro cidade */}
       <Text style={styles.sectionTitle}>Filtrar por cidade</Text>
@@ -329,51 +247,6 @@ export default function DashboardScreen() {
         onClose={() => setPeriodOpen(false)}
       />
       <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
-    </View>
-  );
-}
-
-function HeroBar({
-  real,
-  prev,
-  meta,
-  realizado,
-}: {
-  real: number;
-  prev: number;
-  meta: number;
-  realizado: number;
-}) {
-  const styles = useStyles();
-  const { colors } = useTheme();
-
-  const ritmo = prev > 0 ? real / prev : real >= 1 ? 1 : 0;
-  const tone = ritmo >= 1 ? colors.success : ritmo >= 0.76 ? colors.warning : colors.error;
-  const faturadoW = Math.max(0, Math.min(1, real)) * 100;
-  const prevW = Math.max(0, Math.min(1, prev)) * 100;
-  const falta = Math.max(0, meta - realizado);
-
-  return (
-    <View style={styles.heroBar}>
-      <View style={styles.heroPctRow}>
-        <View style={styles.heroPctCol}>
-          <Text style={[styles.heroPct, { color: tone }]}>{`${Math.round(real * 100)}%`}</Text>
-          <Text style={styles.heroPctLabel}>Faturado</Text>
-        </View>
-        <View style={[styles.heroPctCol, styles.heroPctColRight]}>
-          <Text style={[styles.heroPct, { color: colors.muted }]}>{`${Math.round(prev * 100)}%`}</Text>
-          <Text style={styles.heroPctLabel}>Previsionado</Text>
-        </View>
-      </View>
-
-      <View style={styles.heroTrack}>
-        <View style={[styles.heroFillLight, { width: `${prevW}%`, backgroundColor: tone }]} />
-        <View style={[styles.heroFill, { width: `${faturadoW}%`, backgroundColor: tone }]} />
-      </View>
-
-      <Text style={styles.heroFalta}>
-        Falta <Text style={styles.heroFaltaValue}>{formatBRL(falta)}</Text> para 100% da meta
-      </Text>
     </View>
   );
 }

@@ -1,0 +1,33 @@
+{
+  "summary": "Redesign do dashboard validado com sucesso nos dois papéis (VAGNER vendedor e admin abrindo /admin/vendedor/204). Ambos os fluxos mostram: 3 cartões de percentual no topo com labels EXATAMENTE 'Faturado' (38%, vermelho), 'Previsionado' (73%, cor neutra), 'Gap falta (%)' (-34%, vermelho, com sinal); título 'Progresso da Meta de Vendas' sobre a barra grossa (h=26px); bloco 'META DE VENDAS DO MÊS' com R$ 91.375,00, hint '16 de 22 dias úteis · 6 restantes' e pílula 'Meta do dia: R$ 9.373,10/dia útil restante'; grade de 4 KPIs (Faturado R$ 35.136,40, Previsionado R$ 66.454,55, Gap (falta) R$ R$ -31.318,15 com sinal e tom vermelho, Falta para a meta R$ 56.238,60 com ícone flag-checkered). Nenhum card 'Gap (%)' existe mais na grade. Seção 'Ordenar clientes' com 4 chips reordena a lista (verificado: OTICA MODERNA 113% -> GUSTAVO 0% quando muda para 'Menor atingimento'). Filtro por cidade e busca de cliente presentes. Filtro de período: modal abre, mostra 13 meses (2025-09 a 2026-09); ao selecionar Ago/2026 e 'Mês inteiro' os valores mudam (38%->33%, meta 91.375,00 permanece, gap -67% em vermelho, previsionado 100%). Paridade total entre dashboard do vendedor e detalhe admin. Cores respeitam a regra de ritmo (< 76% vermelho — VAGNER está atrasado, esperado).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web shadow props", "issue": "Warning não bloqueante 'shadow* style props are deprecated. Use boxShadow.' persiste (mesmo das iterações 2/3/4)."}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(LOW) Migrar remaining shadow* RN styles para boxShadow para silenciar deprecation warning (já reportado desde iteração 2)."
+  ],
+  "critical_code_review_comments": [
+    "frontend/src/components/performance-summary.tsx: cálculo ritmo = pctReal/pctPrev quando pctPrev>0, fallback correto quando pctPrev=0 (usa pctReal>=1 para success). Tom aplicado consistentemente em pct-faturado, pct-gap E na barra (fill/fillLight) E no kpi-gap-valor via tone. OK.",
+    "signedPct/signedBRL: sinal + para positivo e - para negativo; gapPctSigned = -k.gap_pct (inverte convenção do backend para exibir gap como negativo quando faltam vendas). Confirmado: -34% no cenário atual de VAGNER.",
+    "faltaMeta = max(0, meta - realizadas) — nunca negativo, correto para o rótulo 'Falta para a meta'.",
+    "hero/track: altura passou de 16px (dashboard antigo) para 26px (mais grossa) conforme pedido.",
+    "frontend/app/dashboard.tsx & frontend/app/admin/vendedor/[cod].tsx: ambos passam o mesmo `PerformanceSummary` + `SortChips`, garantindo paridade. Admin usa vendedor=<cod> na query. OK.",
+    "PerformanceSummary não recebe/expõe testID para 'sort-*' — testIDs vêm do próprio SortChips (sort-atingimento_desc etc.), corretos.",
+    "PeriodFilterModal: modal auto-aplica ao clicar chip de mês + botão 'Mês inteiro' (full-month-btn), sem botão 'Aplicar' explícito — funcionou nos dois fluxos.",
+    "Estilos órfãos em dashboard.tsx (hero/heroBar/heroPctRow/heroFill/heroFalta/metaBox/metaLabel/metaValueBox/metaValue/metaHint/metaDayChip/etc.) não são mais usados após a extração para PerformanceSummary. Não bloqueia mas pode ser limpo pelo main agent (dashboard.tsx tem ~375 linhas ainda dentro do limite)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped por instrução)", "frontend": "100% para todos os 8 critérios de aceitação"},
+  "seed_data_creation": "Nenhum dado semeado neste run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "TestIDs úteis no novo layout: pct-faturado, pct-previsionado, pct-gap (todos no PerformanceSummary), kpi-realizada, kpi-provisionada, kpi-gap-valor, kpi-falta-meta, sort-atingimento_desc/asc, sort-faturado_desc/asc, period-pill, month-chip-YYYY-MM, full-month-btn, clear-filter-button, client-search, vendedor-row-204, client-row-<cod>. Modal de período auto-fecha ao aplicar (não há botão 'Aplicar' — clique no month-chip depois em full-month-btn). Login: login-identifier-input, login-password-input, login-submit-button. Admin detail em /admin/vendedor/204 abre imediatamente pois VAGNER já está sincronizado.",
+  "rca_of_issue": "Não aplicável — feature de redesign validada com sucesso."
+}

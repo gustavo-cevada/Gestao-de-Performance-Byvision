@@ -71,3 +71,14 @@ Ver /app/memory/test_credentials.md
 - Mesmo app/deploy e mesmo banco: apenas o caminho/URL e a aparência da entrada mudam. Vendedores continuam usando `/login` (app).
 - Login do admin valida o cargo: se a conta não for admin, faz logout e mostra "sem acesso administrativo".
 - auth.login() agora retorna { user, error } (login.tsx atualizado). Regressão do login de vendedor verificada (VAGNER -> /dashboard).
+
+### Iteração 6 (2026-06) — Redesenho da tela inicial (dashboard) + paridade no admin
+- Tela inicial reformulada conforme imagem de referência do usuário:
+  - 3 cards de percentual no topo: Faturado %, Previsionado %, Gap falta (%) (com sinal +/-).
+  - Card "Progresso da Meta de Vendas" com título e barra MAIS GROSSA (26px, cantos levemente arredondados 6px). Segmentos: faturado (sólido) + previsionado (claro) + restante (cinza).
+  - Bloco "META DE VENDAS DO MÊS" com valor, dias úteis e pílula "Meta do dia".
+  - Grade de 4 KPIs: Faturado, Previsionado, Gap (falta) R$ (valor com sinal, ex.: R$ -31.318,15) e "Falta para a meta" (com ícone flag). Removido o antigo card "Gap (%)" (virou o 3º card de percentual no topo).
+  - Cores seguem a regra de ritmo (<76% vermelho, 76-99% amarelo, >=100% verde) em: Faturado %, Gap %, Gap R$ e barra. Previsionado neutro.
+- Componentes compartilhados criados: src/components/performance-summary.tsx e src/components/sort-chips.tsx (reutilizados no dashboard do vendedor e no detalhe do admin).
+- ADMIN: /admin/vendedor/[cod] agora tem PARIDADE TOTAL com o dashboard — inclui "Ordenar clientes" (chips), busca de cliente, filtro por cidade e a "Meta do dia" do vendedor. Nada fica oculto no painel admin.
+- Testado (frontend) pelo testing agent: sem bugs. Backlog: limpar estilos órfãos em dashboard.tsx (opcional) e migrar shadow* -> boxShadow (P2).
