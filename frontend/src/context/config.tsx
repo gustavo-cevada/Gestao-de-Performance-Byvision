@@ -22,6 +22,11 @@ export const DEFAULT_LABELS: Record<string, string> = {
   kpi_falta_meta: "Falta para a meta",
   section_ordenar: "Ordenar clientes",
   section_cidade: "Filtrar por cidade",
+  // Tela do cliente
+  title_ritmo: "Ritmo da meta",
+  metric_meta_mes: "Meta do mês",
+  metric_meta_dia: "Meta/dia",
+  metric_saldo_mes: "Saldo/mês (R$)",
 };
 
 // Rótulos amigáveis dos campos na tela de Parametrização
@@ -39,6 +44,10 @@ export const LABEL_META: { key: string; grupo: string; nome: string }[] = [
   { key: "kpi_falta_meta", grupo: "KPIs", nome: "KPI Falta para a meta" },
   { key: "section_ordenar", grupo: "Seções", nome: "Seção Ordenar" },
   { key: "section_cidade", grupo: "Seções", nome: "Seção Cidade" },
+  { key: "title_ritmo", grupo: "Tela do cliente", nome: "Título 'Ritmo da meta'" },
+  { key: "metric_meta_mes", grupo: "Tela do cliente", nome: "Meta do mês" },
+  { key: "metric_meta_dia", grupo: "Tela do cliente", nome: "Meta/dia" },
+  { key: "metric_saldo_mes", grupo: "Tela do cliente", nome: "Saldo/mês (R$)" },
 ];
 
 const DEFAULTS: AppConfig = { labels: {}, thresholds: { yellow: 0.76, green: 1.0 } };
@@ -49,7 +58,9 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const { data } = useQuery({
     queryKey: ["app-config"],
     queryFn: () => apiFetch<AppConfig>("/config", { auth: false }),
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const value = useMemo<AppConfig>(

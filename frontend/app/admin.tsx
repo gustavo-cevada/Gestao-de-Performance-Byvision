@@ -19,7 +19,7 @@ import { LogoHeader } from "@/src/components/logo-header";
 import { MenuSheet } from "@/src/components/menu-sheet";
 import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/context/auth";
-import { useConfig } from "@/src/context/config";
+import { useConfig, useLabels } from "@/src/context/config";
 import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -255,6 +255,7 @@ function VendedorRow({
   const styles = useStyles();
   const { colors } = useTheme();
   const { thresholds } = useConfig();
+  const L = useLabels();
 
   const hasMeta = (item.meta ?? 0) > 0;
   const pct = item.pct ?? 0;
@@ -289,7 +290,7 @@ function VendedorRow({
       ) : item.synced ? (
         <>
           <View style={styles.statsRow}>
-            <Stat label="Faturado" value={formatBRL(item.faturado ?? 0)} />
+            <Stat label={L("kpi_faturado")} value={formatBRL(item.faturado ?? 0)} />
             <Stat label="Meta" value={hasMeta ? formatBRL(item.meta ?? 0) : "—"} />
           </View>
           {(item.sem_meta ?? 0) > 0 && (

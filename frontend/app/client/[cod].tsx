@@ -8,7 +8,7 @@ import { BarChart } from "@/src/components/bar-chart";
 import { Icon, IconName } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
 import { PurchaseBars } from "@/src/components/purchase-bars";
-import { usePaceTone } from "@/src/context/config";
+import { usePaceTone, useLabels } from "@/src/context/config";
 import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -24,6 +24,7 @@ export default function ClientDetail() {
   const styles = useStyles();
   const { colors } = useTheme();
   const paceTone = usePaceTone();
+  const L = useLabels();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -66,6 +67,7 @@ export default function ClientDetail() {
   const realFrac = Math.max(0, Math.min(1, pct ?? 0));
   const behind = meta > 0 && Number(cl.gap_pct ?? 0) > 0.0001;
   const barColor = paceTone(ritmo, meta > 0);
+  const saldoMes = Math.max(0, meta - faturado);
 
   return (
     <View style={styles.screen}>
@@ -89,7 +91,7 @@ export default function ClientDetail() {
         <View style={styles.card}>
           <View style={styles.rowBetween}>
             <View>
-              <Text style={styles.cardTitle}>Ritmo da meta</Text>
+              <Text style={styles.cardTitle}>{L("title_ritmo")}</Text>
               <Text style={styles.muted}>
                 {behind ? "Abaixo do ritmo necessário" : meta > 0 ? "No ritmo / adiantado" : "Sem meta definida"}
               </Text>
@@ -115,16 +117,20 @@ export default function ClientDetail() {
           </View>
 
           <View style={styles.rowBetween}>
-            <Metric label="Faturado" value={formatBRL(faturado)} />
-            <Metric label="Previsionado" value={meta > 0 ? formatBRL(cl.meta_esperada) : "—"} align="right" />
+            <Metric label={L("kpi_faturado")} value={formatBRL(faturado)} />
+            <Metric label={L("kpi_previsionado")} value={meta > 0 ? formatBRL(cl.meta_esperada) : "—"} align="right" />
           </View>
           <View style={styles.rowBetween}>
-            <Metric label="Meta do mês" value={meta > 0 ? formatBRL(meta) : "—"} />
+            <Metric label={L("metric_meta_mes")} value={meta > 0 ? formatBRL(meta) : "—"} />
             <Metric
-              label="Meta/dia"
+              label={L("metric_meta_dia")}
               value={meta > 0 && cl.meta_diaria_necessaria != null ? formatBRL(cl.meta_diaria_necessaria) : "—"}
               align="right"
             />
+          </View>
+          <View style={styles.rowBetween}>
+            <Metric label={L("metric_saldo_mes")} value={meta > 0 ? formatBRL(saldoMes) : "—"} />
+            <View style={{ flex: 1 }} />
           </View>
 
           {meta > 0 && (

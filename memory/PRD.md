@@ -95,5 +95,6 @@ Ver /app/memory/test_credentials.md
 - **% neutro:** os cartões de percentual "Faturado" e "Previsionado" na `PerformanceSummary` ficam em cor neutra (branco no tema escuro / cinza escuro no claro). A regra de cores continua em Gap %, Gap R$ e na barra.
 
 ### Backlog / pendente
+- Iteração 7.1: rótulos da Parametrização agora propagam para TODAS as telas (mesma chave por conceito): tela do cliente (`Ritmo da meta`→title_ritmo, `Faturado`→kpi_faturado, `Previsionado`→kpi_previsionado, `Meta do mês`→metric_meta_mes, `Meta/dia`→metric_meta_dia) e cards de vendedor/cliente-row (`Faturado`/`Meta/dia`). Novo `metric_saldo_mes` ("Saldo/mês (R$)") exibido na tela do cliente = max(0, meta−faturado). ConfigProvider revalida (staleTime 0 + refetchOnMount/onWindowFocus) para refletir mudanças sem reload.
 - P2: migrar `shadow*` → `boxShadow`; limpar estilos órfãos em dashboard.tsx.
 - P2 (backlog anterior): contato rápido (WhatsApp), metas em massa, exportar CRM, gráfico de produtos por cliente, pódio de vendedores.

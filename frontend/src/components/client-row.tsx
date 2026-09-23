@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 
 import { Icon } from "@/src/components/icon";
-import { usePaceTone } from "@/src/context/config";
+import { usePaceTone, useLabels } from "@/src/context/config";
 import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -28,6 +28,7 @@ export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => 
   const styles = useStyles();
   const { colors } = useTheme();
   const paceTone = usePaceTone();
+  const L = useLabels();
 
   const hasMeta = item.meta > 0;
 
@@ -90,10 +91,10 @@ export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => 
 
       {/* Métricas */}
       <View style={styles.stats}>
-        <Stat label="Faturado" value={formatBRL(item.faturado)} />
+        <Stat label={L("kpi_faturado")} value={formatBRL(item.faturado)} />
         <Stat label="Meta" value={hasMeta ? formatBRL(item.meta) : "—"} />
         <Stat
-          label="Meta/dia"
+          label={L("metric_meta_dia")}
           value={hasMeta && item.meta_diaria_necessaria != null ? formatBRL(item.meta_diaria_necessaria) : "—"}
         />
       </View>
