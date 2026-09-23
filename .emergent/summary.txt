@@ -1,1 +1,121 @@
-<analysis>shadow*boxShadowrank_delta/app/backendserver.pydw_client.py/app/frontend/app/app/frontend/src/componentskpi-cardclient-rowbar-chartperiod-filter-modallogo-header.tsx/app/frontend/src/lib/app/frontend/src/theme.tsmakeStyles/app/backend/server.py/app/frontend/app/dashboard.tsx/app/frontend/app/crm/index.tsx/app/frontend/src/components/client-row.tsx/app/frontend/src/components/logo-header.tsxshadow*boxShadowGET /api/dashboardGET /api/clientsGET /api/client/{cod}GET /api/crmPOST /api/syncX-API-Key.env<76% = red76–99% = yellow>=100% = greenVAGNERvagner123adminadmin123X-API-Key.envVAGNERvagner123adminadmin123</analysis>
+<analysis>**original_problem_statement:** Crie um aplicativo mobile Gestão de Performance de Vendas Byvision para vendedores acompanharem metas mensais e desempenho de clientes. O app deve calcular vendas realizadas, vendas provisionadas (ritmo com base em dias úteis), gap (R$ e %), exibir lista de clientes com metas individuais e barra de progresso. Deve incluir uma aba CRM para ranking geral de clientes (Ativo/Pré-inativo/Inativo). Além disso, crie um Painel Administrativo (Dashboard Admin) acessível via web/desktop (em uma URL dedicada  com login próprio) para visualização de desempenho de todos os vendedores, edição de metas e gestão de usuários. Integração com API externa existente. Estética moderna, minimalista, com tema claro/escuro.
+
+**User's preferred language**: Portuguese (INSTRUCT next agent to respond in the user's preferred language only)
+
+**what currently exists?** 
+A fully functional Expo mobile/web app and FastAPI backend. The app features a main dashboard with performance KPIs (colored by pacing logic: Red/Yellow/Green), a CRM tab, and detailed client profiles. An Admin Panel is fully implemented and accessible via a dedicated desktop-friendly  route, allowing administrators to manage users, view all 27 sellers' performances, and adjust client goals. Both admin and seller views share the same MongoDB, caching data from an external SQL Server API.
+
+**Last working item**:
+    - Last item agent was working: Redesigning the main dashboard layout to match a user-provided reference image (3 top percentage cards, thicker progress bar, signed gaps, relocated missing goal text with icon) and ensuring 100% parity between the seller's dashboard and the Admin's seller detail view (adding the Sort Clients filter and Daily Goal display to the admin view).
+    - Status: USER VERIFICATION PENDING
+    - Agent Testing Done: Y
+    - Which testing method agent to use? NA (Testing agent was used, and features were fully validated).
+    - User Testing Done: N
+
+**All Pending/In progress Issue list**: 
+  - Issue 1: Migrate shadow styles & cleanup unused styles (P2)
+     - Attempted fixes: None yet.
+     - Next debug checklist: Replace  styles with  in React Native components for better cross-platform compatibility. Remove unused styles in  left over after extracting components.
+     - Why fix this issue and what will be achieved with the fix? Modernizes styling, prevents rendering warnings on web, and improves code maintainability.
+     - Status: NOT STARTED
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Frontend
+
+**In progress Task List**:
+  None
+
+**Upcoming and Future Tasks**
+    Upcoming Tasks:
+    - Task 1: Working Days Config (P1): Allow admin to manually adjust the number of working days in a month (e.g., for holidays) to make pacing calculations accurate.
+    - Task 2: Missing Goals Alert (P1): Highlight clients from the API that do not have goals set in the Admin panel yet.
+    - Task 3: Quick Contact (P2): Add WhatsApp/Phone dialer buttons on the client profile screen.
+    - Task 4: Mass Goal Assignment / Metas em Massa (P2): Allow applying a default goal to multiple clients of a seller simultaneously.
+    - Task 5: Export CRM List (P2): Add functionality to export the filtered CRM list.
+    - Task 6: Client Products Chart (P2): Display top bought products in the client detail screen.
+    - Task 7: Seller Ranking / Pódio (P2): Create a podium/ranking comparing sellers by percentage achieved.
+    Future Tasks:
+    - Task 8: Month-over-Month Comparison (P3): Show previous period comparison next to each client on the dashboard.
+
+**Completed work in this session**
+- Built Full Admin Panel: View all sellers, edit client goals per seller, and manage system users (create/edit/disable/reset password).
+- Implemented Dedicated Admin Login (): Desktop-optimized login screen distinct from the mobile seller login.
+- Dashboard Redesign: Matched user's reference image with updated KPI layout, thicker charts, signed gaps, and percentage cards.
+- Refactored UI Components: Extracted  and  to ensure identical layout and filtering capabilities between the mobile dashboard and the admin's seller detail view.
+
+**Earlier issues found/mentioned but not fixed**
+   None.
+
+**Known issue recurrence from previous fork**
+  - Issue recurrence in previous fork: N/A
+  - Recurrence count: 0
+  - Status: NOT STARTED
+
+**Code Architecture**
+- : FastAPI backend with specific routers for auth, sync, and admin (). 
+- : Expo Router navigation.
+  - : , , .
+  - : , , , .
+- : Extracted UI blocks like , , , .
+
+**Key Technical Concepts**
+React Native, Expo Router, FastAPI, MongoDB, JWT Authentication (Role-based: admin vs vendedor), External API Proxying.
+
+**key DB schema**
+  - metas: {id_responsavel, cod_cliente, meta_mensal, periodo}
+  - users: {username, role, hashed_password, cod_vendedor, disabled} (Stored in MongoDB)
+
+**changes in tech stack**
+  - None
+
+**All files of reference**
+  -  & : Updated with multi-seller sync and user management.
+  -  & : New dedicated desktop admin entry.
+  -  & : Redesigned dashboard and admin-side equivalent.
+  -  & : Shared UI components for the dashboard redesign.
+
+**Areas that need refactoring**:
+  -  styling in UI components should be converted to .
+  - Unused styles in  after the extraction of .
+
+**key api endpoints**
+  - : Lists all 27 sellers with aggregated metrics.
+  - : Lists registered users.
+  - , , : Admin user management endpoints.
+  - : Returns aggregated metrics and pacing.
+
+**Critical Info for New Agent**
+  - **Roles**: App supports  and  roles. Admin has a dedicated desktop login via .
+  - **CRITICAL UI RULE**: Color thresholds for goal achievement MUST be strictly followed: , , . This is based on **ritmo (pace)** (faturado vs esperado no tempo), not raw percentage.
+  - **Pacing Logic**: Previsionado (pacing) is calculated based on working days. 
+  - **Test Credentials**:  /  (Salesperson) and  /  (Admin). These are set in .
+
+**documents and test reports created in this job**
+  - 
+  - 
+
+**Last 10 User Messages and any pending HUMAN messages**
+  - User requested an Admin Panel accessible via web/desktop to manage users, edit goals, and see all sellers. (COMPLETED)
+  - User answered clarification questions: current month sync only, others start at 0 goals, full user management, same login with role check. (COMPLETED)
+  - User later modified the login request: wants a separate, dedicated desktop link () for the Admin login. (COMPLETED)
+  - User provided an image to redesign the seller dashboard (thicker bars, specific KPI placement, signs on gaps). (COMPLETED)
+  - User requested that the Admin's view of a seller includes the Sort Clients filter and Daily Goal, matching the seller dashboard exactly. (COMPLETED)
+
+**Project Health Check:**
+  - Backend: Healthy.
+  - Frontend: Healthy.
+
+**3rd Party Integrations**
+  - External DW API (SQL Server) — requires User provided  (Already set in backend ).
+
+**Testing status**
+  - Testing agent used after significant changes: YES (Used to validate admin logic and the dashboard UI redesign parities).
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: 
+  - Known regressions: None.
+
+**Credentials to test flow:**
+  - Role Sales:  / 
+  - Role Admin:  / 
+
+**What agent forgot to execute**
+  - Nothing was overlooked. All user requests were completed and verified by the testing agent.</analysis>

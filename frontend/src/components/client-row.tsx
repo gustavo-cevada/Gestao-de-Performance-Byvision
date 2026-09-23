@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 
 import { Icon } from "@/src/components/icon";
+import { usePaceTone } from "@/src/context/config";
 import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -8,6 +9,8 @@ import { makeStyles, useTheme } from "@/src/theme";
 export type ClientItem = {
   cod_cliente: string;
   nome: string;
+  razao_social?: string | null;
+  nome_fantasia?: string | null;
   cidade: string;
   meta: number;
   faturado: number;
@@ -17,23 +20,19 @@ export type ClientItem = {
   gap_pct: number | null; // exp_frac - real_frac (positivo = atrasado)
   gap_valor: number | null; // meta_esperada - faturado (positivo = atrasado)
   meta_diaria_necessaria: number | null;
+  at_risk?: boolean;
+  risk_reason?: string | null;
 };
 
 export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => void }) {
   const styles = useStyles();
   const { colors } = useTheme();
+  const paceTone = usePaceTone();
 
   const hasMeta = item.meta > 0;
-  const ritmo = item.pct_ritmo ?? 0;
 
-  // cor pelo ritmo (100% = no ritmo)
-  const toneColor = !hasMeta
-    ? colors.borderStrong
-    : ritmo >= 1
-      ? colors.success
-      : ritmo >= 0.76
-        ? colors.warning
-        : colors.error;
+  // cor pelo ritmo (limiares configuráveis)
+  const toneColor = paceTone(item.pct_ritmo, hasMeta);
 
   const realFrac = Math.max(0, Math.min(1, item.pct ?? 0));
   const expFrac = Math.max(0, Math.min(1, item.exp_frac ?? 0));
@@ -41,11 +40,15 @@ export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => 
   const deficitLeft = realFrac * 100;
   const deficitWidth = Math.max(0, (expFrac - realFrac) * 100);
 
+  const title = (item.razao_social || item.nome_fantasia || item.nome || "").trim();
+  const fantasia = (item.nome_fantasia || "").trim();
+  const subtitle = fantasia && fantasia.toUpperCase() !== title.toUpperCase() ? fantasia : null;
+
   return (
     <Pressable style={styles.row} onPress={onPress} testID={`client-row-${item.cod_cliente}`}>
       <View style={styles.headerLine}>
         <Text style={styles.name} numberOfLines={1}>
-          {item.nome}
+          {title}
         </Text>
         <View style={[styles.badge, { backgroundColor: hasMeta ? toneColor : colors.surfaceTertiary }]}>
           <Text style={[styles.badgeText, { color: hasMeta ? colors.onBrandPrimary : colors.muted }]}>
@@ -54,9 +57,22 @@ export function ClientRow({ item, onPress }: { item: ClientItem; onPress: () => 
         </View>
       </View>
 
+      {subtitle && (
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      )}
+
       <Text style={styles.meta} numberOfLines={1}>
         {`#${item.cod_cliente}  •  ${item.cidade}  •  ritmo da meta`}
       </Text>
+
+      {item.at_risk && (
+        <View style={styles.riskTag}>
+          <Icon name="trending-down" size={12} color={colors.error} />
+          <Text style={styles.riskTagText}>Em risco de queda</Text>
+        </View>
+      )}
 
       {/* Barra: realizado + faixa de déficit até o esperado + marcador */}
       <View style={styles.barTrack}>
@@ -124,9 +140,23 @@ const useStyles = makeStyles((c) => ({
   },
   headerLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   name: { flex: 1, fontFamily: fonts.semibold, fontSize: 15, color: c.onSurface },
+  subtitle: { fontFamily: fonts.medium, fontSize: 11, color: c.muted, letterSpacing: 0.3, textTransform: "uppercase", marginTop: -2 },
   badge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, minWidth: 52, alignItems: "center" },
   badgeText: { fontFamily: fonts.numBold, fontSize: 12 },
   meta: { fontFamily: fonts.regular, fontSize: 11, color: c.muted },
+  riskTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: c.surfaceTertiary,
+    borderWidth: 1,
+    borderColor: c.error,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  riskTagText: { fontFamily: fonts.semibold, fontSize: 10.5, color: c.error },
 
   barTrack: {
     height: 10,

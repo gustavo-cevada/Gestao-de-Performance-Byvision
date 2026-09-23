@@ -7,7 +7,9 @@ import { apiFetch } from "@/src/api/client";
 import { BarChart } from "@/src/components/bar-chart";
 import { Icon, IconName } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
-import { formatBRL, formatDateBR, formatPct } from "@/src/lib/format";
+import { PurchaseBars } from "@/src/components/purchase-bars";
+import { usePaceTone } from "@/src/context/config";
+import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -21,6 +23,7 @@ export default function ClientDetail() {
   const { cod } = useLocalSearchParams<{ cod: string }>();
   const styles = useStyles();
   const { colors } = useTheme();
+  const paceTone = usePaceTone();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -62,14 +65,7 @@ export default function ClientDetail() {
   const expFrac = Math.max(0, Math.min(1, Number(cl.exp_frac ?? 0)));
   const realFrac = Math.max(0, Math.min(1, pct ?? 0));
   const behind = meta > 0 && Number(cl.gap_pct ?? 0) > 0.0001;
-  const barColor =
-    meta <= 0
-      ? colors.borderStrong
-      : (ritmo ?? 0) >= 1
-        ? colors.success
-        : (ritmo ?? 0) >= 0.76
-          ? colors.warning
-          : colors.error;
+  const barColor = paceTone(ritmo, meta > 0);
 
   return (
     <View style={styles.screen}>
@@ -154,15 +150,7 @@ export default function ClientDetail() {
           {data.compras_recentes.length === 0 ? (
             <Text style={styles.muted}>Nenhuma compra faturada recente.</Text>
           ) : (
-            data.compras_recentes.slice(0, 12).map((p, i) => (
-              <View key={`${p.id_pedido}-${i}`} style={[styles.purchaseRow, i > 0 && styles.divider]}>
-                <View>
-                  <Text style={styles.purchaseDate}>{formatDateBR(p.data_baixa)}</Text>
-                  <Text style={styles.muted}>Pedido {p.id_pedido}</Text>
-                </View>
-                <Text style={styles.purchaseValue}>{formatBRL(p.valor)}</Text>
-              </View>
-            ))
+            <PurchaseBars data={data.compras_recentes} limit={12} />
           )}
         </View>
       </ScrollView>

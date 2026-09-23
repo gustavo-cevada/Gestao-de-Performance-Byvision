@@ -7,7 +7,8 @@ import { apiFetch } from "@/src/api/client";
 import { BarChart } from "@/src/components/bar-chart";
 import { Icon } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
-import { formatBRL, formatDateBR } from "@/src/lib/format";
+import { PurchaseBars } from "@/src/components/purchase-bars";
+import { formatBRL } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -117,23 +118,10 @@ export default function CrmClientProfile() {
         {/* Últimos pedidos */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Últimos pedidos</Text>
-          <View style={styles.pedHead}>
-            <Text style={[styles.pedH, { flex: 1 }]}>Data</Text>
-            <Text style={[styles.pedH, { flex: 1 }]}>Pedido</Text>
-            <Text style={[styles.pedH, { width: 100, textAlign: "right" }]}>Valor</Text>
-          </View>
           {data.compras_recentes.length === 0 ? (
             <Text style={styles.muted}>Nenhum pedido faturado recente.</Text>
           ) : (
-            data.compras_recentes.slice(0, 15).map((p: any, i: number) => (
-              <View key={`${p.id_pedido}-${i}`} style={styles.pedRow}>
-                <Text style={[styles.pedCell, { flex: 1 }]}>{formatDateBR(p.data_baixa)}</Text>
-                <Text style={[styles.pedCell, { flex: 1 }]}>{p.id_pedido}</Text>
-                <Text style={[styles.pedValue, { width: 100 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                  {formatBRL(p.valor)}
-                </Text>
-              </View>
-            ))
+            <PurchaseBars data={data.compras_recentes} limit={15} />
           )}
         </View>
       </ScrollView>

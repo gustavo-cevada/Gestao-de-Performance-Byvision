@@ -10,6 +10,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { ToastProvider } from "@/src/components/toast";
 import { AuthProvider } from "@/src/context/auth";
+import { ConfigProvider } from "@/src/context/config";
 import { queryClient } from "@/src/query-client";
 import { ThemeProvider } from "@/src/theme";
 import { fontAssets } from "@/src/typography";
@@ -32,8 +33,10 @@ export default function RootLayout() {
               <KeyboardProvider>
                 <AuthProvider>
                   <ToastProvider>
-                    <StatusBar style="light" />
-                    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }} />
+                    <ConfigProvider>
+                      <StatusBar style="light" />
+                      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }} />
+                    </ConfigProvider>
                   </ToastProvider>
                 </AuthProvider>
               </KeyboardProvider>

@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 
 import { Icon } from "@/src/components/icon";
 import { KpiCard } from "@/src/components/kpi-card";
+import { useLabels, usePaceTone, usePaceToneKey } from "@/src/context/config";
 import { formatBRL } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -38,13 +39,16 @@ function signedBRL(n: number): string {
 export function PerformanceSummary({ k, scope }: { k: Kpi; scope: ScopeInfo }) {
   const styles = useStyles();
   const { colors } = useTheme();
+  const L = useLabels();
+  const paceTone = usePaceTone();
+  const paceToneKey = usePaceToneKey();
 
   const dayMode = scope.day_mode;
   const pctReal = k.pct_atingimento_realizado;
   const pctPrev = k.pct_atingimento_provisionado;
   const ritmo = pctPrev > 0 ? pctReal / pctPrev : pctReal >= 1 ? 1 : 0;
-  const tone = ritmo >= 1 ? colors.success : ritmo >= 0.76 ? colors.warning : colors.error;
-  const toneKey: "success" | "warning" | "error" = ritmo >= 1 ? "success" : ritmo >= 0.76 ? "warning" : "error";
+  const tone = paceTone(ritmo);
+  const toneKey = paceToneKey(ritmo);
 
   const gapPctSigned = -k.gap_pct;
   const gapValorSigned = -k.gap_valor;
@@ -57,21 +61,21 @@ export function PerformanceSummary({ k, scope }: { k: Kpi; scope: ScopeInfo }) {
     <View style={styles.wrap}>
       {/* Três cartões de percentual */}
       <View style={styles.pctRow}>
-        <PctStat value={`${Math.round(pctReal * 100)}%`} label="Faturado" color={tone} testID="pct-faturado" />
-        <PctStat value={`${Math.round(pctPrev * 100)}%`} label="Previsionado" color={colors.onSurface} testID="pct-previsionado" />
-        <PctStat value={signedPct(gapPctSigned)} label="Gap falta (%)" color={tone} testID="pct-gap" />
+        <PctStat value={`${Math.round(pctReal * 100)}%`} label={L("pct_faturado")} color={colors.onSurface} testID="pct-faturado" />
+        <PctStat value={`${Math.round(pctPrev * 100)}%`} label={L("pct_previsionado")} color={colors.onSurface} testID="pct-previsionado" />
+        <PctStat value={signedPct(gapPctSigned)} label={L("pct_gap")} color={tone} testID="pct-gap" />
       </View>
 
       {/* Cartão de progresso + meta */}
       <View style={styles.hero}>
-        <Text style={styles.progressTitle}>Progresso da Meta de Vendas</Text>
+        <Text style={styles.progressTitle}>{L("title_progresso")}</Text>
         <View style={styles.track}>
           <View style={[styles.fillLight, { width: `${prevW}%`, backgroundColor: tone }]} />
           <View style={[styles.fill, { width: `${realW}%`, backgroundColor: tone }]} />
         </View>
 
         <View style={styles.metaBox}>
-          <Text style={styles.metaLabel}>{dayMode ? "META DO DIA" : "META DE VENDAS DO MÊS"}</Text>
+          <Text style={styles.metaLabel}>{dayMode ? "META DO DIA" : L("label_meta_mes")}</Text>
           <Text style={styles.metaValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
             {formatBRL(k.meta_vendas)}
           </Text>
@@ -83,7 +87,7 @@ export function PerformanceSummary({ k, scope }: { k: Kpi; scope: ScopeInfo }) {
               <View style={styles.metaDayChip}>
                 <Icon name="target" size={14} color={colors.onBrandTertiary} />
                 <Text style={styles.metaDayText}>
-                  Meta do dia: <Text style={styles.metaDayValue}>{formatBRL(k.meta_do_dia)}</Text>/dia útil restante
+                  {L("label_meta_dia")}: <Text style={styles.metaDayValue}>{formatBRL(k.meta_do_dia)}</Text>/dia útil restante
                 </Text>
               </View>
             </>
@@ -93,18 +97,18 @@ export function PerformanceSummary({ k, scope }: { k: Kpi; scope: ScopeInfo }) {
 
       {/* Grade de KPIs */}
       <View style={styles.grid}>
-        <KpiCard label={dayMode ? "Vendas do dia" : "Faturado"} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
-        <KpiCard label={dayMode ? "Previsionado do dia" : "Previsionado"} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
+        <KpiCard label={dayMode ? "Vendas do dia" : L("kpi_faturado")} value={formatBRL(k.vendas_realizadas)} icon="cash-check" testID="kpi-realizada" />
+        <KpiCard label={dayMode ? "Previsionado do dia" : L("kpi_previsionado")} value={formatBRL(k.venda_provisionada)} icon="chart-timeline-variant" testID="kpi-provisionada" />
       </View>
       <View style={styles.grid}>
         <KpiCard
-          label="Gap (falta) R$"
+          label={L("kpi_gap_valor")}
           value={signedBRL(gapValorSigned)}
           icon={gapValorSigned < 0 ? "trending-down" : "trending-up"}
           tone={toneKey}
           testID="kpi-gap-valor"
         />
-        <KpiCard label="Falta para a meta" value={formatBRL(faltaMeta)} icon="flag-checkered" testID="kpi-falta-meta" />
+        <KpiCard label={L("kpi_falta_meta")} value={formatBRL(faltaMeta)} icon="flag-checkered" testID="kpi-falta-meta" />
       </View>
     </View>
   );

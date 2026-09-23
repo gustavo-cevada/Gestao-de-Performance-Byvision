@@ -23,6 +23,7 @@ import { PeriodFilterModal } from "@/src/components/period-filter-modal";
 import { SortChips } from "@/src/components/sort-chips";
 import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/context/auth";
+import { useLabels } from "@/src/context/config";
 import { dayLong, monthLabel, pad2 } from "@/src/lib/date";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -54,6 +55,7 @@ type Dashboard = {
   };
   cities: string[];
   total_clientes: number;
+  total_em_risco: number;
   clients: ClientItem[];
 };
 
@@ -65,6 +67,7 @@ export default function DashboardScreen() {
   const toast = useToast();
   const qc = useQueryClient();
   const { user } = useAuth();
+  const L = useLabels();
 
   const [city, setCity] = useState("TODAS");
   const [month, setMonth] = useState<string | null>(null);
@@ -73,6 +76,7 @@ export default function DashboardScreen() {
   const [periodOpen, setPeriodOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [clientQuery, setClientQuery] = useState("");
+  const [onlyRisk, setOnlyRisk] = useState(false);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["dashboard", city, month, day, sort],
@@ -98,7 +102,7 @@ export default function DashboardScreen() {
   if (user.role === "admin") return <Redirect href="/admin" />;
 
   const header = (
-    <LogoHeader onMenu={() => setMenuOpen(true)} title="Painel de Performance" />
+    <LogoHeader onMenu={() => setMenuOpen(true)} title={L("title_painel")} />
   );
 
   if (isLoading) {
@@ -141,9 +145,11 @@ export default function DashboardScreen() {
   }
 
   const cq = clientQuery.trim().toLowerCase();
+  const riskCount = data.total_em_risco ?? 0;
+  const baseClients = onlyRisk ? data.clients.filter((c) => c.at_risk) : data.clients;
   const shownClients = cq
-    ? data.clients.filter((c) => c.nome.toLowerCase().includes(cq) || c.cod_cliente.includes(cq))
-    : data.clients;
+    ? baseClients.filter((c) => c.nome.toLowerCase().includes(cq) || c.cod_cliente.includes(cq))
+    : baseClients;
 
   const listHeader = (
     <View style={styles.listHeader}>
@@ -178,11 +184,11 @@ export default function DashboardScreen() {
       <PerformanceSummary k={k} scope={scope} />
 
       {/* Ordenar */}
-      <Text style={styles.sectionTitle}>Ordenar clientes</Text>
+      <Text style={styles.sectionTitle}>{L("section_ordenar")}</Text>
       <SortChips sort={sort} onChange={setSort} />
 
       {/* Filtro cidade */}
-      <Text style={styles.sectionTitle}>Filtrar por cidade</Text>
+      <Text style={styles.sectionTitle}>{L("section_cidade")}</Text>
     </View>
   );
 
@@ -216,7 +222,32 @@ export default function DashboardScreen() {
                 </Pressable>
               )}
             </View>
-            <Text style={styles.clientsTitle}>{`Clientes (${shownClients.length})`}</Text>
+            <View style={styles.clientsTitleRow}>
+              <Text style={styles.clientsTitle}>{`Clientes (${shownClients.length})`}</Text>
+              {riskCount > 0 && (
+                <Pressable
+                  style={[styles.riskBtn, onlyRisk && styles.riskBtnActive]}
+                  onPress={() => setOnlyRisk((v) => !v)}
+                  testID="risk-filter-button"
+                >
+                  <Icon name="trending-down" size={16} color={onlyRisk ? colors.onError : colors.error} />
+                  <Text style={[styles.riskBtnText, { color: onlyRisk ? colors.onError : colors.error }]}>
+                    Clientes em risco
+                  </Text>
+                  <View style={[styles.riskBadge, onlyRisk && { backgroundColor: colors.onError }]}>
+                    <Text style={[styles.riskBadgeText, onlyRisk && { color: colors.error }]}>{riskCount}</Text>
+                  </View>
+                </Pressable>
+              )}
+            </View>
+            {onlyRisk && (
+              <View style={styles.riskMsg} testID="risk-message">
+                <Icon name="alert-decagram-outline" size={16} color={colors.error} />
+                <Text style={styles.riskMsgText}>
+                  {`Você tem ${riskCount} cliente${riskCount === 1 ? "" : "s"} em risco de queda`}
+                </Text>
+              </View>
+            )}
           </>
         }
         ListEmptyComponent={
@@ -369,6 +400,49 @@ const useStyles = makeStyles((c) => ({
   sortRow: { gap: 8, paddingVertical: 2 },
   sortChip: { height: 36, flexShrink: 0, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1.5, justifyContent: "center", alignItems: "center" },
   sortText: { fontFamily: fonts.semibold, fontSize: 13 },
-  clientsTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface, marginTop: 14, marginBottom: 2 },
+  clientsTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface },
+  clientsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 14,
+    marginBottom: 2,
+  },
+  riskBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: c.error,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    height: 34,
+  },
+  riskBtnActive: { backgroundColor: c.error },
+  riskBtnText: { fontFamily: fonts.semibold, fontSize: 12.5 },
+  riskBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: c.error,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  riskBadgeText: { fontFamily: fonts.numBold, fontSize: 11, color: c.onError },
+  riskMsg: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: c.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: c.error,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  riskMsgText: { flex: 1, fontFamily: fonts.semibold, fontSize: 13, color: c.onSurface },
   empty: { alignItems: "center", gap: 10, paddingVertical: 40 },
 }));

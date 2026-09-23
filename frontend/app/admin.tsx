@@ -19,6 +19,7 @@ import { LogoHeader } from "@/src/components/logo-header";
 import { MenuSheet } from "@/src/components/menu-sheet";
 import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/context/auth";
+import { useConfig } from "@/src/context/config";
 import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -36,6 +37,7 @@ type Vendedor = {
   meta?: number;
   pct?: number | null;
   total_clientes?: number;
+  sem_meta?: number;
   ativos?: number;
   pre_inativos?: number;
   inativos?: number;
@@ -56,6 +58,7 @@ export default function AdminHome() {
   const toast = useToast();
   const qc = useQueryClient();
   const { user, loading } = useAuth();
+  const { thresholds } = useConfig();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -138,7 +141,7 @@ export default function AdminHome() {
     : data.vendedores;
 
   const totPct = data.totals.pct ?? 0;
-  const totTone = paceTone(totPct, expFrac, colors);
+  const totTone = paceTone(totPct, expFrac, colors, thresholds);
 
   const listHeader = (
     <View style={styles.listHeader}>
@@ -165,7 +168,9 @@ export default function AdminHome() {
 
       {/* Atalhos */}
       <View style={styles.shortcuts}>
-        <NavCard icon="tune-variant" label="Gestão de Metas" onPress={() => router.push("/admin/metas")} testID="nav-metas" />
+        <NavCard icon="tune-variant" label="Metas" onPress={() => router.push("/admin/metas")} testID="nav-metas" />
+        <NavCard icon="calendar-check" label="Dias Úteis" onPress={() => router.push("/admin/dias-uteis")} testID="nav-dias-uteis" />
+        <NavCard icon="cog-sync-outline" label="Parametrização" onPress={() => router.push("/admin/parametrizacao")} testID="nav-parametrizacao" />
         <NavCard icon="account-cog-outline" label="Usuários" onPress={() => router.push("/admin/users")} testID="nav-users" />
       </View>
 
@@ -220,9 +225,9 @@ export default function AdminHome() {
   );
 }
 
-function paceTone(pct: number, expFrac: number, colors: any) {
+function paceTone(pct: number, expFrac: number, colors: any, th: { yellow: number; green: number }) {
   const ritmo = expFrac > 0 ? pct / expFrac : pct >= 1 ? 1 : 0;
-  return ritmo >= 1 ? colors.success : ritmo >= 0.76 ? colors.warning : colors.error;
+  return ritmo >= th.green ? colors.success : ritmo >= th.yellow ? colors.warning : colors.error;
 }
 
 function NavCard({ icon, label, onPress, testID }: { icon: IconName; label: string; onPress: () => void; testID: string }) {
@@ -249,10 +254,11 @@ function VendedorRow({
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
+  const { thresholds } = useConfig();
 
   const hasMeta = (item.meta ?? 0) > 0;
   const pct = item.pct ?? 0;
-  const tone = hasMeta ? paceTone(pct, expFrac, colors) : colors.borderStrong;
+  const tone = hasMeta ? paceTone(pct, expFrac, colors, thresholds) : colors.borderStrong;
 
   return (
     <Pressable
@@ -286,6 +292,12 @@ function VendedorRow({
             <Stat label="Faturado" value={formatBRL(item.faturado ?? 0)} />
             <Stat label="Meta" value={hasMeta ? formatBRL(item.meta ?? 0) : "—"} />
           </View>
+          {(item.sem_meta ?? 0) > 0 && (
+            <View style={styles.alertRow}>
+              <Icon name="alert-circle-outline" size={14} color={colors.warning} />
+              <Text style={styles.alertText}>{`${item.sem_meta} cliente(s) sem meta definida`}</Text>
+            </View>
+          )}
           <View style={styles.chipsRow}>
             <MiniChip color={colors.success} label={`${item.ativos ?? 0} ativos`} />
             <MiniChip color={colors.warning} label={`${item.pre_inativos ?? 0} pré`} />
@@ -351,9 +363,10 @@ const useStyles = makeStyles((c) => ({
   summaryFill: { height: "100%", borderRadius: 0 },
   summaryMeta: { fontFamily: fonts.regular, fontSize: 12, color: c.muted },
 
-  shortcuts: { flexDirection: "row", gap: 12 },
+  shortcuts: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   navCard: {
-    flex: 1,
+    flexBasis: "47%",
+    flexGrow: 1,
     backgroundColor: c.surfaceSecondary,
     borderRadius: 14,
     borderWidth: 1,
@@ -362,7 +375,7 @@ const useStyles = makeStyles((c) => ({
     alignItems: "center",
     gap: 8,
   },
-  navLabel: { fontFamily: fonts.semibold, fontSize: 13, color: c.onSurface },
+  navLabel: { fontFamily: fonts.semibold, fontSize: 12, color: c.onSurface, textAlign: "center" },
 
   syncAllBtn: {
     flexDirection: "row",
@@ -409,6 +422,16 @@ const useStyles = makeStyles((c) => ({
   statValue: { fontFamily: fonts.numMedium, fontSize: 14, color: c.onSurfaceSecondary },
 
   chipsRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  alertRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: c.surfaceTertiary,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  alertText: { fontFamily: fonts.medium, fontSize: 11.5, color: c.warning },
   miniChip: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   miniChipText: { fontFamily: fonts.semibold, fontSize: 10.5 },

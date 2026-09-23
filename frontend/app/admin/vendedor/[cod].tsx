@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
@@ -12,7 +12,9 @@ import { LogoHeader } from "@/src/components/logo-header";
 import { Kpi, PerformanceSummary, ScopeInfo } from "@/src/components/performance-summary";
 import { PeriodFilterModal } from "@/src/components/period-filter-modal";
 import { SortChips } from "@/src/components/sort-chips";
+import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/context/auth";
+import { useLabels } from "@/src/context/config";
 import { dayLong, monthLabel, pad2 } from "@/src/lib/date";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -24,6 +26,7 @@ type Dashboard = {
   kpi: Kpi;
   cities: string[];
   total_clientes: number;
+  total_em_risco: number;
   clients: ClientItem[];
 };
 
@@ -33,6 +36,9 @@ export default function VendedorDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
+  const L = useLabels();
+  const toast = useToast();
+  const qc = useQueryClient();
   const params = useLocalSearchParams<{ cod: string; nome?: string }>();
   const cod = String(params.cod);
 
@@ -42,6 +48,7 @@ export default function VendedorDetail() {
   const [sort, setSort] = useState("atingimento_desc");
   const [periodOpen, setPeriodOpen] = useState(false);
   const [clientQuery, setClientQuery] = useState("");
+  const [onlyRisk, setOnlyRisk] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin-dashboard", cod, city, month, day, sort],
@@ -54,10 +61,29 @@ export default function VendedorDetail() {
     enabled: user?.role === "admin",
   });
 
+  const syncMut = useMutation({
+    mutationFn: () => apiFetch(`/admin/vendedores/${cod}/sync`, { method: "POST" }),
+    onSuccess: () => {
+      toast("Atualizando dados do vendedor…", "success");
+      setTimeout(() => {
+        refetch();
+        qc.invalidateQueries({ queryKey: ["admin-vendedores"] });
+      }, 1200);
+    },
+    onError: () => toast("Falha ao atualizar", "error"),
+  });
+
   if (user?.role !== "admin") return <Redirect href="/dashboard" />;
 
   const title = params.nome || `Vendedor #${cod}`;
-  const header = <LogoHeader title={title} subtitle={`#${cod}`} onBack={() => router.back()} />;
+  const header = (
+    <LogoHeader
+      title={title}
+      subtitle={`#${cod}`}
+      onBack={() => router.back()}
+      actions={[{ icon: "refresh", onPress: () => { refetch(); syncMut.mutate(); }, testID: "vendedor-refresh" }]}
+    />
+  );
 
   if (isLoading) {
     return (
@@ -90,9 +116,11 @@ export default function VendedorDetail() {
   const periodLabel = scope.day ? dayLong(scope.day) : monthLabel(scope.month);
 
   const cq = clientQuery.trim().toLowerCase();
+  const riskCount = data.total_em_risco ?? 0;
+  const baseClients = onlyRisk ? data.clients.filter((c) => c.at_risk) : data.clients;
   const shownClients = cq
-    ? data.clients.filter((c) => c.nome.toLowerCase().includes(cq) || c.cod_cliente.includes(cq))
-    : data.clients;
+    ? baseClients.filter((c) => c.nome.toLowerCase().includes(cq) || c.cod_cliente.includes(cq))
+    : baseClients;
 
   const listHeader = (
     <View style={styles.listHeader}>
@@ -121,10 +149,10 @@ export default function VendedorDetail() {
 
       <PerformanceSummary k={data.kpi} scope={scope} />
 
-      <Text style={styles.sectionTitle}>Ordenar clientes</Text>
+      <Text style={styles.sectionTitle}>{L("section_ordenar")}</Text>
       <SortChips sort={sort} onChange={setSort} />
 
-      <Text style={styles.sectionTitle}>Filtrar por cidade</Text>
+      <Text style={styles.sectionTitle}>{L("section_cidade")}</Text>
     </View>
   );
 
@@ -156,7 +184,32 @@ export default function VendedorDetail() {
                 </Pressable>
               )}
             </View>
-            <Text style={styles.clientsTitle}>{`Clientes (${shownClients.length})`}</Text>
+            <View style={styles.clientsTitleRow}>
+              <Text style={styles.clientsTitle}>{`Clientes (${shownClients.length})`}</Text>
+              {riskCount > 0 && (
+                <Pressable
+                  style={[styles.riskBtn, onlyRisk && styles.riskBtnActive]}
+                  onPress={() => setOnlyRisk((v) => !v)}
+                  testID="risk-filter-button"
+                >
+                  <Icon name="trending-down" size={16} color={onlyRisk ? colors.onError : colors.error} />
+                  <Text style={[styles.riskBtnText, { color: onlyRisk ? colors.onError : colors.error }]}>
+                    Clientes em risco
+                  </Text>
+                  <View style={[styles.riskBadge, onlyRisk && { backgroundColor: colors.onError }]}>
+                    <Text style={[styles.riskBadgeText, onlyRisk && { color: colors.error }]}>{riskCount}</Text>
+                  </View>
+                </Pressable>
+              )}
+            </View>
+            {onlyRisk && (
+              <View style={styles.riskMsg} testID="risk-message">
+                <Icon name="alert-decagram-outline" size={16} color={colors.error} />
+                <Text style={styles.riskMsgText}>
+                  {`Você tem ${riskCount} cliente${riskCount === 1 ? "" : "s"} em risco de queda`}
+                </Text>
+              </View>
+            )}
           </>
         }
         ListEmptyComponent={
@@ -235,6 +288,49 @@ const useStyles = makeStyles((c) => ({
   clientSearchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 15, color: c.onSurface },
 
   sectionTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface, marginTop: 4 },
-  clientsTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface, marginTop: 14, marginBottom: 2 },
+  clientsTitle: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface },
+  clientsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 14,
+    marginBottom: 2,
+  },
+  riskBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: c.error,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    height: 34,
+  },
+  riskBtnActive: { backgroundColor: c.error },
+  riskBtnText: { fontFamily: fonts.semibold, fontSize: 12.5 },
+  riskBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: c.error,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  riskBadgeText: { fontFamily: fonts.numBold, fontSize: 11, color: c.onError },
+  riskMsg: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: c.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: c.error,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  riskMsgText: { flex: 1, fontFamily: fonts.semibold, fontSize: 13, color: c.onSurface },
   empty: { alignItems: "center", gap: 10, paddingVertical: 40 },
 }));

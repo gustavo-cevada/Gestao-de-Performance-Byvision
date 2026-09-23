@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 7 validado ponta-a-ponta. Backend: 9/10 testes pytest passam (test_iteration7.py). Config publico + PUT admin (labels/thresholds) OK e reflete no GET publico; vendedor recebe 403 no PUT. Feriados admin OK: POST 2026-09-07 reduz total_dias_uteis do dashboard de VAGNER (mes 2026-09) em 1 e volta ao normal apos DELETE; RBAC OK. Metas retorna sem_meta e total_clientes (cross-check com contagem de meta<=0 bateu). Dashboard traz total_em_risco (int) e cada cliente possui at_risk(bool), risk_reason, razao_social e nome_fantasia. Modo dia (day=2026-09-22) filtra apenas clientes com faturado>0. UNICO BUG BACKEND: /api/admin/vendedores nao inclui sem_meta para vendedores marcados synced=True que nao possuem clientes agregados (cod 153,68,91,69) — o campo so e adicionado dentro do 'if a:' em server.py:836. Frontend: menu admin abre Parametrização e Dias Úteis; salvar thresholds/labels emite toast 'Parametrização salva'; feriado 2026-09-07 pode ser adicionado (row-2026-09-07 aparece) e removido; /admin/metas mostra banner '264 cliente(s) sem meta definida' (SEM VENDEDOR selecionado); /admin/vendedor/204 mostra vendedor-refresh e risk-filter-button (label mostra '11'); ao clicar mostra risk-message 'Você tem 11 clientes em risco de queda'. Dashboard do VAGNER: risk-filter-button com contagem 11, mensagem correta ao ativar, pct-faturado/pct-previsionado com cor NEUTRA (rgb(0,0,0)). Detalhe do cliente 5341: 12 elementos [data-testid^='purchase-'] com barras proporcionais (widths 100%,61.68%,90.74%) e valor pill ao lado — atende ao criterio de 'purchase-bars'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/vendedores", "issue": "Campo 'sem_meta' ausente em linhas de vendedores marcados synced=True mas sem clientes agregados (ex.: 153, 68, 91, 69). Spec pede sem_meta por vendedor. Root cause: server.py L836-L848 so define sem_meta dentro do bloco 'if a:'. Correcao: incluir sem_meta=0 (e total_clientes=0, faturado=0, meta=0, ativos=0, pre_inativos=0, inativos=0) por padrao na criacao do 'row' ANTES do if."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web shadow*", "issue": "Warning nao-bloqueante 'shadow* style props are deprecated. Use boxShadow.' persiste desde iteracao 2."},
+      {"component": "pointerEvents prop", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents' aparece em algum overlay/modal. Nao-bloqueante."},
+      {"component": "Animated useNativeDriver", "issue": "'useNativeDriver is not supported ... Falling back to JS-based animation' — inofensivo em web preview mas devera ser tratado quando for buildar nativo."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7.py",
+    "/app/test_reports/pytest/iteration7_results.xml"
+  ],
+  "action_items": [
+    "(MEDIUM) Ajustar /api/admin/vendedores para sempre incluir 'sem_meta' (int) por linha — inicializar defaults antes do bloco 'if a:' em server.py:826-848 para linhas sem agregado de clientes.",
+    "(LOW) Migrar remaining shadow* RN styles para boxShadow (recorrente desde iteracao 2)."
+  ],
+  "critical_code_review_comments": [
+    "server.py: _compute_at_risk + total_em_risco calculados em /api/dashboard: consistente com contagem de clients.at_risk. OK.",
+    "server.py L680-L739 (holidays): _holiday_weekdays ignora feriados que caem em fim-de-semana (weekday<5), e get_period atualizado com total_bd/elapsed_bd — logica correta.",
+    "server.py L745-L784 (config): DEFAULT_THRESHOLDS mesclado no read, PUT limpa labels vazias, thresholds valida floats. Boa.",
+    "server.py L790-L868 (/admin/vendedores): CONDICAO 'if a:' oculta campos agregados (incluindo sem_meta) — divergencia com spec. Sugerido inicializar defaults antes do if.",
+    "frontend/app/admin/parametrizacao.tsx: validThresholds impede save se gNum <= yNum. Percentuais persistidos como fracao (dividir/multiplicar por 100). OK.",
+    "frontend/app/admin/dias-uteis.tsx: mascara DD/MM/AAAA + validacao (mes/dia + Date roundtrip). Query invalida holidays+dashboard+admin-vendedores apos add/delete. OK.",
+    "frontend/src/components/purchase-bars.tsx: testID por item ('purchase-<id_pedido>'), largura proporcional (min 4%). Nao ha wrapper testID='purchase-bars' — se main agent quiser esse selector agregado, adicionar na View pai (linha 21)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7.py (novo)"
+  ],
+  "success_rate": {"backend": "90% (9/10)", "frontend": "100% (todos os fluxos manuais validados)"},
+  "seed_data_creation": "Nenhum dado persistente semeado. Feriado 2026-09-07 e labels/thresholds foram criados durante teste e revertidos ao estado original (yellow=0.76 / green=1.0, labels vazias, holidays inalterados).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "TestIDs iteracao 7: nav-parametrizacao, nav-dias-uteis, threshold-yellow, threshold-green, label-<key> (ex: label-kpi_faturado), save-config-button, holiday-date-input (mascara DD/MM/AAAA), holiday-name-input, add-holiday-button, holiday-row-<YYYY-MM-DD>, del-holiday-<YYYY-MM-DD>, holiday-list, risk-filter-button, risk-message, vendedor-refresh (no header admin/vendedor/[cod]), purchase-<id_pedido> (multiplas no client detail). Ao testar feriados sempre restaurar removendo. Ao testar Parametrizacao restaurar thresholds para yellow=76/green=100 e limpar labels. VAGNER (204) ja esta sincronizado, NAO clicar 'Sincronizar todos'. Mes de referencia atual: 2026-09.",
+  "rca_of_issue": "Bug em /api/admin/vendedores (server.py L826-848): estrutura de linha e criada com dados basicos do vendedor e SO ENTAO, dentro de 'if a:' (existe agregado de clients), sao adicionados faturado/meta/pct/total_clientes/sem_meta/ativos/etc. Vendedores 'synced' cuja colecao 'clients' esta vazia (nao ha docs com cod_vendedor=cv) nao recebem esses campos. Reproducao: GET /api/admin/vendedores autenticado como admin -> observar linhas com cod 153/68/91/69 (todas synced=True) sem chave 'sem_meta'. Mitigacao: inicializar row com defaults zero antes do 'if a:' ou aplicar 'row.setdefault(\"sem_meta\", 0)' etc. na saida."
+}

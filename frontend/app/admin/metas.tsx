@@ -23,7 +23,7 @@ import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
 
 type MetaClient = { cod_cliente: string; nome: string; cidade: string; meta: number; faturado: number };
-type MetasResp = { total_meta: number; clients: MetaClient[] };
+type MetasResp = { total_meta: number; sem_meta: number; total_clientes: number; clients: MetaClient[] };
 type Vendedor = { cod_vendedor: number; nome: string | null; synced: boolean; qt_clientes: number };
 type VendResp = { vendedores: Vendedor[] };
 
@@ -40,6 +40,7 @@ export default function AdminMetas() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [onlySemMeta, setOnlySemMeta] = useState(false);
 
   const vendedores = useQuery({
     queryKey: ["admin-vendedores"],
@@ -90,9 +91,15 @@ export default function AdminMetas() {
 
   if (user?.role !== "admin") return <Redirect href="/dashboard" />;
 
-  const filtered = (data?.clients ?? []).filter((c) =>
-    search ? c.nome.toLowerCase().includes(search.toLowerCase()) || c.cod_cliente.includes(search) : true,
-  );
+  const metaVal = (cod: string) => parseFloat((values[cod] ?? "").replace(",", ".")) || 0;
+  const semMetaCount = (data?.clients ?? []).filter((c) => metaVal(c.cod_cliente) <= 0).length;
+
+  const filtered = (data?.clients ?? []).filter((c) => {
+    if (onlySemMeta && metaVal(c.cod_cliente) > 0) return false;
+    return search
+      ? c.nome.toLowerCase().includes(search.toLowerCase()) || c.cod_cliente.includes(search)
+      : true;
+  });
 
   function onSave() {
     const metas = Object.entries(values).map(([cod_cliente, v]) => ({
@@ -133,6 +140,23 @@ export default function AdminMetas() {
         />
       </View>
 
+      {semMetaCount > 0 && (
+        <Pressable
+          style={[styles.alertBanner, onlySemMeta && styles.alertBannerActive]}
+          onPress={() => setOnlySemMeta((v) => !v)}
+          testID="sem-meta-filter"
+        >
+          <Icon name="alert-circle-outline" size={18} color={colors.warning} />
+          <Text style={styles.alertBannerText}>
+            {`${semMetaCount} cliente(s) sem meta definida`}
+          </Text>
+          <View style={styles.alertBannerCta}>
+            <Text style={styles.alertBannerCtaText}>{onlySemMeta ? "Mostrar todos" : "Filtrar"}</Text>
+            <Icon name={onlySemMeta ? "close" : "filter-variant"} size={14} color={colors.brand} />
+          </View>
+        </Pressable>
+      )}
+
       {isLoading || vend == null ? (
         <View style={styles.centerFill}>
           <ActivityIndicator size="large" color={colors.brandPrimary} />
@@ -142,17 +166,22 @@ export default function AdminMetas() {
           data={filtered}
           keyExtractor={(c) => c.cod_cliente}
           keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
-            <View style={styles.row} testID={`meta-row-${item.cod_cliente}`}>
+          renderItem={({ item }) => {
+            const isSem = metaVal(item.cod_cliente) <= 0;
+            return (
+            <View style={[styles.row, isSem && styles.rowSem]} testID={`meta-row-${item.cod_cliente}`}>
               <View style={styles.rowInfo}>
-                <Text style={styles.rowName} numberOfLines={1}>
-                  {item.nome}
-                </Text>
+                <View style={styles.rowNameLine}>
+                  {isSem && <Icon name="alert-circle" size={15} color={colors.warning} />}
+                  <Text style={styles.rowName} numberOfLines={1}>
+                    {item.nome}
+                  </Text>
+                </View>
                 <Text style={styles.rowSub}>
                   {`#${item.cod_cliente} • ${item.cidade} • Fat. ${formatBRL(item.faturado)}`}
                 </Text>
               </View>
-              <View style={styles.inputWrap}>
+              <View style={[styles.inputWrap, isSem && styles.inputWrapSem]}>
                 <Text style={styles.currency}>R$</Text>
                 <TextInput
                   value={values[item.cod_cliente] ?? ""}
@@ -163,7 +192,8 @@ export default function AdminMetas() {
                 />
               </View>
             </View>
-          )}
+            );
+          }}
           contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 140 }}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={<Text style={styles.empty}>Nenhum cliente para este vendedor.</Text>}
@@ -242,6 +272,23 @@ const useStyles = makeStyles((c) => ({
     ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
   },
   empty: { fontFamily: fonts.regular, fontSize: 14, color: c.muted, textAlign: "center", paddingVertical: 30 },
+  alertBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    backgroundColor: c.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: c.warning,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  alertBannerActive: { backgroundColor: c.surfaceTertiary },
+  alertBannerText: { flex: 1, fontFamily: fonts.semibold, fontSize: 13, color: c.onSurface },
+  alertBannerCta: { flexDirection: "row", alignItems: "center", gap: 4 },
+  alertBannerCtaText: { fontFamily: fonts.bold, fontSize: 12, color: c.brand },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -252,8 +299,10 @@ const useStyles = makeStyles((c) => ({
     borderColor: c.border,
     padding: 12,
   },
+  rowSem: { borderColor: c.warning },
   rowInfo: { flex: 1, gap: 3 },
-  rowName: { fontFamily: fonts.semibold, fontSize: 14, color: c.onSurface },
+  rowNameLine: { flexDirection: "row", alignItems: "center", gap: 5 },
+  rowName: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: c.onSurface },
   rowSub: { fontFamily: fonts.regular, fontSize: 11, color: c.muted },
   inputWrap: {
     flexDirection: "row",
@@ -267,6 +316,7 @@ const useStyles = makeStyles((c) => ({
     height: 44,
     width: 120,
   },
+  inputWrapSem: { borderColor: c.warning },
   currency: { fontFamily: fonts.numMedium, fontSize: 13, color: c.muted },
   metaInput: {
     flex: 1,

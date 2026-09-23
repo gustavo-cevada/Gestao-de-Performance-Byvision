@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
@@ -168,6 +168,20 @@ def _prev_month(year: int, month: int) -> str:
     return f"{year}-{month - 1:02d}"
 
 
+async def _holiday_weekdays(sy: int, sm: int) -> list[date]:
+    """Feriados (dias de semana) cadastrados para o mes sy-sm."""
+    prefix = f"{sy}-{sm:02d}-"
+    out: list[date] = []
+    async for h in db.holidays.find({"date": {"$regex": f"^{prefix}"}}, {"_id": 0, "date": 1}):
+        try:
+            d = datetime.strptime(str(h["date"])[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+        if d.weekday() < 5:  # ignora feriados que ja caem no fim de semana
+            out.append(d)
+    return out
+
+
 def compute_pace(meta: float, faturado: float, total_bd: int, elapsed_bd: int) -> dict:
     """Metricas de ritmo com base no andamento dos dias uteis do mes.
 
@@ -209,8 +223,53 @@ def compute_pace(meta: float, faturado: float, total_bd: int, elapsed_bd: int) -
     }
 
 
+def _month_shift(ref_month: str, k: int) -> str:
+    y, m = int(ref_month[:4]), int(ref_month[5:7])
+    idx = (y * 12 + (m - 1)) - k
+    return f"{idx // 12}-{idx % 12 + 1:02d}"
+
+
+def _compute_at_risk(series: dict[str, float], ref_month: str, ref_exp: float) -> tuple[bool, str | None]:
+    """Analise de curto prazo: o cliente esta em queda (mes atual e/ou proximo)?
+
+    Usa o faturamento dos ultimos meses. Projeta o mes corrente pelo ritmo dos
+    dias uteis (ref_exp). Sinaliza risco se a projecao do mes cair abaixo da
+    linha de base recente OU se houver tendencia de queda consecutiva.
+    """
+    cur = ref_month
+    m1, m2, m3 = _month_shift(cur, 1), _month_shift(cur, 2), _month_shift(cur, 3)
+    v1 = float(series.get(m1, 0.0))  # mes passado (completo)
+    v2 = float(series.get(m2, 0.0))
+    v3 = float(series.get(m3, 0.0))
+    vc = float(series.get(cur, 0.0))  # mes corrente (parcial)
+
+    completed = [x for x in (v1, v2, v3) if x > 0]
+    if len(completed) < 2:
+        return False, None  # historico insuficiente para julgar queda
+
+    baseline = sum(completed[:2]) / len(completed[:2])  # media dos 2 ultimos meses c/ venda
+    if baseline <= 0:
+        return False, None
+
+    exp = ref_exp if ref_exp and ref_exp > 0.05 else 0.05
+    proj = vc / exp  # projecao do mes corrente
+
+    # queda projetada no mes atual (abaixo de 80% da base recente)
+    if proj < 0.8 * baseline:
+        return True, "queda_mes_atual"
+    # tres meses consecutivos em queda -> risco para o proximo mes
+    if v3 > 0 and v2 > 0 and v1 > 0 and v1 < v2 < v3:
+        return True, "tendencia_queda"
+    # queda recente acentuada (ultimo mes < 60% da media dos 2 anteriores)
+    prev_avg = (v2 + v3) / 2 if (v2 + v3) > 0 else 0.0
+    if v1 > 0 and prev_avg > 0 and v1 < 0.6 * prev_avg:
+        return True, "queda_recente"
+    return False, None
+
+
 async def _load_clients_scoped(
-    sel_month: str, day: str | None, total_bd: int, elapsed_bd: int, cod_vendedor: int
+    sel_month: str, day: str | None, total_bd: int, elapsed_bd: int,
+    cod_vendedor: int, ref_month: str, ref_exp: float,
 ) -> tuple[list[dict], set[str]]:
     """Carrega clientes com faturado e metricas para o escopo (mes ou dia).
 
@@ -224,8 +283,13 @@ async def _load_clients_scoped(
         cod = c["cod_cliente"]
         meta_mensal = float(metas.get(cod, 0.0))
         compras = c.get("compras_f") or []
+        series: dict[str, float] = {}
         for r in compras:
-            months.add(r["d"][:7])
+            ym = r["d"][:7]
+            months.add(ym)
+            series[ym] = series.get(ym, 0.0) + r["v"]
+
+        at_risk, risk_reason = _compute_at_risk(series, ref_month, ref_exp)
 
         if day:
             faturado = round(sum(r["v"] for r in compras if r["d"] == day), 2)
@@ -240,6 +304,7 @@ async def _load_clients_scoped(
             "cod_cliente": cod,
             "nome": _client_label(c),
             "razao_social": c.get("razao_social"),
+            "nome_fantasia": c.get("nome_fantasia"),
             "cnpj_cpf": c.get("cnpj_cpf"),
             "cidade": (c.get("cidade") or "-").strip(),
             "uf": c.get("uf"),
@@ -249,6 +314,8 @@ async def _load_clients_scoped(
             "pct": round(faturado / meta_scope, 4) if meta_scope > 0 else None,
             "status_comercial": c.get("status_comercial"),
             "dias_sem_compra": c.get("dias_sem_compra"),
+            "at_risk": at_risk,
+            "risk_reason": risk_reason,
             **pace,
         })
     return out, months
@@ -292,22 +359,34 @@ async def dashboard(
     if day and day[:7] != sel_month:
         day = None
 
-    total_bd = dw.business_days_in_month(sy, sm)
     as_of_str = str(period.get("as_of") or "")[:10]
     try:
         as_of = datetime.strptime(as_of_str, "%Y-%m-%d").date()
     except ValueError:
         as_of = datetime.now().date()
 
+    # feriados cadastrados pelo admin reduzem os dias uteis do mes
+    holidays = await _holiday_weekdays(sy, sm)
+    n_hol = len(holidays)
+    n_hol_elapsed = sum(1 for h in holidays if h <= as_of)
+
+    total_bd = max(0, dw.business_days_in_month(sy, sm) - n_hol)
+
     if sel_month == ref_month:
-        elapsed_bd = int(period.get("dias_uteis_decorridos") or 0)
+        elapsed_raw = int(period.get("dias_uteis_decorridos") or 0)
+        elapsed_bd = min(total_bd, max(0, elapsed_raw - n_hol_elapsed))
     elif sel_month < ref_month:
         elapsed_bd = total_bd  # mes passado (completo)
     else:
         elapsed_bd = 0  # mes futuro
 
     day_mode = bool(day)
-    clients, months = await _load_clients_scoped(sel_month, day, total_bd, elapsed_bd, cod_vendedor)
+    ref_total = int(period.get("total_dias_uteis") or 0)
+    ref_elapsed = int(period.get("dias_uteis_decorridos") or 0)
+    ref_exp = (ref_elapsed / ref_total) if ref_total else 1.0
+    clients, months = await _load_clients_scoped(
+        sel_month, day, total_bd, elapsed_bd, cod_vendedor, ref_month, ref_exp
+    )
 
     cities = sorted({c["cidade"] for c in clients if c["cidade"] and c["cidade"] != "-"})
     if city and city != "TODAS":
@@ -340,6 +419,10 @@ async def dashboard(
         meta_do_dia = round(restante, 2)
 
     filtered_sorted = _sort_clients(filtered, sort)
+    total_em_risco = sum(1 for c in filtered if c.get("at_risk"))
+    # em modo "dia", mostrar apenas clientes que compraram naquele dia
+    if day_mode:
+        filtered_sorted = [c for c in filtered_sorted if c["faturado"] > 0]
     months_list = sorted(months, reverse=True)
 
     return {
@@ -368,7 +451,8 @@ async def dashboard(
         },
         "cities": cities,
         "selected_city": city or "TODAS",
-        "total_clientes": len(filtered),
+        "total_clientes": len(filtered_sorted),
+        "total_em_risco": total_em_risco,
         "clients": filtered_sorted,
     }
 
@@ -505,11 +589,20 @@ async def client_detail(cod: str, user=Depends(current_user)):
     faturado = float(c.get("faturado_mes") or 0.0)
     recent = sorted(compras_f, key=lambda r: str(r.get("data_baixa", "")), reverse=True)[:40]
 
-    pace = compute_pace(
-        meta, faturado,
-        period.get("total_dias_uteis") or 0,
-        period.get("dias_uteis_decorridos") or 0,
+    # dias uteis do mes de referencia ajustados por feriados cadastrados
+    hol_cd = await _holiday_weekdays(ano, mes)
+    as_of_cd_str = str(period.get("as_of") or "")[:10]
+    try:
+        as_of_cd = datetime.strptime(as_of_cd_str, "%Y-%m-%d").date()
+    except ValueError:
+        as_of_cd = datetime.now().date()
+    total_bd_cd = max(0, int(period.get("total_dias_uteis") or 0) - len(hol_cd))
+    elapsed_bd_cd = min(
+        total_bd_cd,
+        max(0, int(period.get("dias_uteis_decorridos") or 0) - sum(1 for h in hol_cd if h <= as_of_cd)),
     )
+
+    pace = compute_pace(meta, faturado, total_bd_cd, elapsed_bd_cd)
 
     # metricas CRM
     fat12 = round(sum(r["v"] for r in (c.get("compras_f") or [])), 2)
@@ -562,7 +655,13 @@ async def admin_list_metas(
         })
     clients_sorted = sorted(clients, key=lambda c: c["nome"])
     total = sum(c["meta"] for c in clients_sorted)
-    return {"total_meta": round(total, 2), "clients": clients_sorted}
+    sem_meta = sum(1 for c in clients_sorted if c["meta"] <= 0)
+    return {
+        "total_meta": round(total, 2),
+        "sem_meta": sem_meta,
+        "total_clientes": len(clients_sorted),
+        "clients": clients_sorted,
+    }
 
 
 @api.put("/admin/metas")
@@ -575,6 +674,114 @@ async def admin_update_metas(body: MetasBulk, user=Depends(require_role("admin")
         )
     total = sum([m["meta"] async for m in db.metas.find({}, {"_id": 0, "meta": 1})])
     return {"ok": True, "total_meta": round(total, 2)}
+
+
+# ---------------------------------------------------------------------------
+# Admin: dias uteis / feriados
+# ---------------------------------------------------------------------------
+class HolidayIn(BaseModel):
+    date: str  # YYYY-MM-DD
+    nome: str | None = None
+
+
+@api.get("/admin/holidays")
+async def admin_list_holidays(user=Depends(require_role("admin"))):
+    holidays = []
+    async for h in db.holidays.find({}, {"_id": 0}).sort("date", 1):
+        holidays.append(h)
+
+    period = await get_period()
+    ry = int(period.get("ref_year") or datetime.now().year)
+    rm = int(period.get("ref_month") or datetime.now().month)
+    hol_ref = await _holiday_weekdays(ry, rm)
+    as_of_str = str(period.get("as_of") or "")[:10]
+    try:
+        as_of = datetime.strptime(as_of_str, "%Y-%m-%d").date()
+    except ValueError:
+        as_of = datetime.now().date()
+
+    total_raw = dw.business_days_in_month(ry, rm)
+    total_bd = max(0, total_raw - len(hol_ref))
+    elapsed_raw = int(period.get("dias_uteis_decorridos") or 0)
+    elapsed_bd = min(total_bd, max(0, elapsed_raw - sum(1 for h in hol_ref if h <= as_of)))
+
+    return {
+        "holidays": holidays,
+        "ref_month": f"{ry}-{rm:02d}",
+        "dias_uteis": {
+            "total_bruto": total_raw,
+            "total": total_bd,
+            "decorridos": elapsed_bd,
+            "restantes": max(0, total_bd - elapsed_bd),
+            "feriados_mes": len(hol_ref),
+        },
+    }
+
+
+@api.post("/admin/holidays")
+async def admin_add_holiday(body: HolidayIn, user=Depends(require_role("admin"))):
+    d = str(body.date)[:10]
+    try:
+        datetime.strptime(d, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data invalida (use AAAA-MM-DD)")
+    await db.holidays.update_one(
+        {"date": d},
+        {"$set": {"date": d, "nome": (body.nome or "").strip() or None}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@api.delete("/admin/holidays/{d}")
+async def admin_del_holiday(d: str, user=Depends(require_role("admin"))):
+    await db.holidays.delete_one({"date": str(d)[:10]})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Parametrizacao (textos + regra de cores) - global
+# ---------------------------------------------------------------------------
+DEFAULT_THRESHOLDS = {"yellow": 0.76, "green": 1.0}
+
+
+class ConfigUpdate(BaseModel):
+    labels: dict | None = None
+    thresholds: dict | None = None
+
+
+async def _get_config() -> dict:
+    doc = await db.settings.find_one({"_id": "config"}, {"_id": 0})
+    labels = (doc or {}).get("labels") or {}
+    thresholds = {**DEFAULT_THRESHOLDS, **((doc or {}).get("thresholds") or {})}
+    return {"labels": labels, "thresholds": thresholds}
+
+
+@api.get("/config")
+async def get_config():
+    """Config publica (textos + limiares de cor) para vendedores e admin."""
+    return await _get_config()
+
+
+@api.put("/admin/config")
+async def update_config(body: ConfigUpdate, user=Depends(require_role("admin"))):
+    update: dict = {}
+    if body.labels is not None:
+        # remove chaves vazias (usa default)
+        clean = {k: str(v) for k, v in body.labels.items() if str(v).strip()}
+        update["labels"] = clean
+    if body.thresholds is not None:
+        th = {}
+        for key in ("yellow", "green"):
+            if key in body.thresholds:
+                try:
+                    th[key] = float(body.thresholds[key])
+                except (TypeError, ValueError):
+                    pass
+        update["thresholds"] = {**DEFAULT_THRESHOLDS, **th}
+    if update:
+        await db.settings.update_one({"_id": "config"}, {"$set": update}, upsert=True)
+    return await _get_config()
 
 
 # ---------------------------------------------------------------------------
@@ -594,11 +801,14 @@ async def admin_vendedores(user=Depends(require_role("admin"))):
     agg: dict[int, dict] = {}
     async for c in db.clients.find({}, {"_id": 0, "compras_f": 0}):
         cv = int(c.get("cod_vendedor") or 0)
-        a = agg.setdefault(cv, {"faturado": 0.0, "meta": 0.0, "total": 0,
+        a = agg.setdefault(cv, {"faturado": 0.0, "meta": 0.0, "total": 0, "sem_meta": 0,
                                 "ativos": 0, "pre_inativos": 0, "inativos": 0})
         a["total"] += 1
         a["faturado"] += float(c.get("faturado_mes") or 0.0)
-        a["meta"] += float(metas.get(c["cod_cliente"], 0.0))
+        meta_cli = float(metas.get(c["cod_cliente"], 0.0))
+        a["meta"] += meta_cli
+        if meta_cli <= 0:
+            a["sem_meta"] += 1
         st = status_crm(c)
         if st == "ATIVO":
             a["ativos"] += 1
@@ -622,6 +832,7 @@ async def admin_vendedores(user=Depends(require_role("admin"))):
             "synced": synced,
             "syncing": cv in _syncing_vendedores or bool(v.get("syncing")),
             "synced_at": v.get("synced_at"),
+            "sem_meta": 0,
         }
         if a:
             faturado = round(a["faturado"], 2)
@@ -631,6 +842,7 @@ async def admin_vendedores(user=Depends(require_role("admin"))):
                 "meta": meta,
                 "pct": round(faturado / meta, 4) if meta > 0 else None,
                 "total_clientes": a["total"],
+                "sem_meta": a["sem_meta"],
                 "ativos": a["ativos"],
                 "pre_inativos": a["pre_inativos"],
                 "inativos": a["inativos"],

@@ -24,6 +24,8 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
       ? [
           { icon: "shield-crown-outline", label: "Painel Admin", route: "/admin", testID: "menu-admin" },
           { icon: "tune-variant", label: "Gestão de Metas", route: "/admin/metas", testID: "menu-metas" },
+          { icon: "calendar-check", label: "Dias Úteis & Feriados", route: "/admin/dias-uteis", testID: "menu-dias-uteis" },
+          { icon: "cog-sync-outline", label: "Parametrização", route: "/admin/parametrizacao", testID: "menu-parametrizacao" },
           { icon: "account-cog-outline", label: "Usuários", route: "/admin/users", testID: "menu-users" },
           { icon: "cog-outline", label: "Configurações", route: "/settings", testID: "menu-settings" },
         ]
