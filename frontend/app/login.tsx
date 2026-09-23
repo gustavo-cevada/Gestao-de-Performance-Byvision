@@ -39,10 +39,10 @@ export default function Login() {
     }
     setBusy(true);
     setError("");
-    const err = await login(identifier.trim(), password);
+    const res = await login(identifier.trim(), password);
     setBusy(false);
-    if (err) {
-      setError(err);
+    if (res.error) {
+      setError(res.error);
       return;
     }
     router.replace("/");

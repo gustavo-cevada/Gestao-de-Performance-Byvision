@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Redirect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiFetch } from "@/src/api/client";
+import { AdminLogin } from "@/src/components/admin-login";
 import { Icon, IconName } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
 import { MenuSheet } from "@/src/components/menu-sheet";
@@ -54,7 +55,7 @@ export default function AdminHome() {
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -84,7 +85,14 @@ export default function AdminHome() {
     onError: () => toast("Falha ao sincronizar", "error"),
   });
 
-  if (user?.role !== "admin") return <Redirect href="/dashboard" />;
+  if (loading) {
+    return (
+      <View style={[styles.screen, styles.centerFill]}>
+        <ActivityIndicator size="large" color={colors.brandPrimary} />
+      </View>
+    );
+  }
+  if (user?.role !== "admin") return <AdminLogin />;
 
   const header = <LogoHeader onMenu={() => setMenuOpen(true)} title="Painel Admin" />;
 

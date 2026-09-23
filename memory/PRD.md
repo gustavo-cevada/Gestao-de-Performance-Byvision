@@ -65,3 +65,9 @@ Ver /app/memory/test_credentials.md
 - /admin/users: CRUD de usuários (criar/editar cargo+cod_vendedor+email, ativar/desativar, redefinir senha). Bloqueio de auto-desativar/rebaixar o próprio admin.
 - Backend: /api/admin/vendedores, /api/admin/vendedores/{cod}/sync, /api/admin/vendedores/sync-all; /api/auth/users (GET/POST/PATCH) e /users/{id}/reset-password. dashboard/crm/clients/metas passam a ter escopo por cod_vendedor (vendedor só vê sua carteira; admin usa ?vendedor=). Clientes agora gravam cod_vendedor; sync generalizado por vendedor com paginação (>500 clientes).
 - Testado (backend + frontend) pelo testing agent: sem bugs. Backlog remanescente: migrar shadow* → boxShadow.
+
+### Iteração 5 (2026-06) — Link/entrada dedicada do Admin (desktop)
+- Acesso admin agora tem entrada própria em `.../admin` que abre uma TELA DE LOGIN DO ADMIN (layout desktop split: painel de marca à esquerda + card de login à direita; empilha no mobile). Componente: frontend/src/components/admin-login.tsx.
+- Mesmo app/deploy e mesmo banco: apenas o caminho/URL e a aparência da entrada mudam. Vendedores continuam usando `/login` (app).
+- Login do admin valida o cargo: se a conta não for admin, faz logout e mostra "sem acesso administrativo".
+- auth.login() agora retorna { user, error } (login.tsx atualizado). Regressão do login de vendedor verificada (VAGNER -> /dashboard).

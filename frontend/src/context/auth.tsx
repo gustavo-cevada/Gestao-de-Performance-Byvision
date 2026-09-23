@@ -15,7 +15,7 @@ export type User = {
 type AuthState = {
   user: User | null;
   loading: boolean;
-  login: (identifier: string, password: string) => Promise<string | void>;
+  login: (identifier: string, password: string) => Promise<{ user?: User; error?: string }>;
   logout: () => Promise<void>;
 };
 
@@ -54,8 +54,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await storage.secureSet(TOKEN_KEY, data.access_token);
       await storage.setItem(USER_KEY, JSON.stringify(data.user));
       setUser(data.user);
+      return { user: data.user };
     } catch (e: any) {
-      return e?.message || "Falha no login";
+      return { error: e?.message || "Falha no login" };
     }
   }
 
