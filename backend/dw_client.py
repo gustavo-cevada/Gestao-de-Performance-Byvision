@@ -42,37 +42,64 @@ def _get(path: str, params: dict | None = None):
 
 
 def get_health() -> dict:
-    resp = requests.get(f"{DW_API_URL}/health", timeout=_TIMEOUT, verify=False)
+    resp = requests.get(f"{DW_API_URL}/health", headers=_HEADERS, timeout=_TIMEOUT, verify=False)
     resp.raise_for_status()
     return resp.json()
 
 
-def get_all_vendedores() -> list[dict]:
-    """Lista de todos os vendedores (cod, nome, email, ativo, qt_clientes)."""
-    data = _get("/vendedores")
-    itens = data if isinstance(data, list) else data.get("itens", [])
-    out = []
-    for v in itens:
-        try:
-            cod = int(v.get("cod_vendedor"))
-        except (TypeError, ValueError):
-            continue
-        out.append({
-            "cod_vendedor": cod,
-            "nome": (v.get("vendedor_nome") or "").strip() or None,
-            "email": v.get("vendedor_email"),
-            "ativo": v.get("vendedor_ativo"),
-            "qt_clientes": int(v.get("qt_clientes") or 0),
-        })
+def get_status() -> dict:
+    """Health-check simples (nao exige chave). Traz cache_generated_at."""
+    resp = requests.get(f"{DW_API_URL}/status", timeout=_TIMEOUT, verify=False)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _all_clientes() -> list[dict]:
+    """Todos os clientes (Cliente 360), sem filtro de vendedor, paginando."""
+    out: list[dict] = []
+    page = 1
+    while True:
+        data = _get("/clientes", {"page_size": 500, "page": page})
+        itens = data.get("itens", []) if isinstance(data, dict) else data
+        if not itens:
+            break
+        out.extend(itens)
+        if len(itens) < 500:
+            break
+        page += 1
+        if page > 40:  # guard-rail (~20k registros)
+            break
     return out
 
 
+def get_all_vendedores() -> list[dict]:
+    """Lista de vendedores derivada dos clientes (a API nao tem /vendedores).
+
+    Agrega por cod_vendedor a partir do Cliente 360 (cod_vendedor,
+    vendedor_nome, vendedor_ativo) e conta clientes por vendedor.
+    """
+    agg: dict[int, dict] = {}
+    for c in _all_clientes():
+        try:
+            cod = int(c.get("cod_vendedor"))
+        except (TypeError, ValueError):
+            continue
+        a = agg.setdefault(cod, {
+            "cod_vendedor": cod, "nome": None, "email": None,
+            "ativo": None, "qt_clientes": 0,
+        })
+        a["qt_clientes"] += 1
+        if not a["nome"]:
+            a["nome"] = (c.get("vendedor_nome") or "").strip() or None
+        if a["ativo"] is None:
+            a["ativo"] = c.get("vendedor_ativo")
+    return sorted(agg.values(), key=lambda x: x["cod_vendedor"])
+
+
 def get_vendedor_info(cod_vendedor: int | None = None) -> dict | None:
-    """Dados oficiais do vendedor (nome, ativo, qt_clientes)."""
+    """Dados do vendedor (derivados dos clientes)."""
     cod = int(cod_vendedor) if cod_vendedor is not None else VENDEDOR_COD
-    data = _get("/vendedores")
-    itens = data if isinstance(data, list) else data.get("itens", [])
-    for v in itens:
+    for v in get_all_vendedores():
         if int(v.get("cod_vendedor", -1)) == cod:
             return v
     return None
@@ -185,18 +212,35 @@ def _business_days(start: date, end: date) -> int:
     return count
 
 
-def periodo_referencia() -> dict:
-    """Determina o mes de referencia a partir do frescor da fonte de compras.
+def _as_of_date() -> date:
+    """Data comercial de referencia ("hoje") a partir do frescor do cache.
 
-    Usa a data da ultima baixa (dm_valorcompra_ultima) como "hoje" comercial,
-    e conta dias uteis do mes.
+    A nova API nao expoe mais 'dm_valorcompra_ultima'. Usamos, em ordem:
+    /status.cache_generated_at, /health.generated_at, senao a data local.
     """
-    health = get_health()
-    ultima = str(health.get("dm_valorcompra_ultima") or "")[:10]
-    try:
-        as_of = datetime.strptime(ultima, "%Y-%m-%d").date()
-    except ValueError:
-        as_of = date.today()
+    candidates = [
+        ("status", "cache_generated_at"),
+        ("status", "produtos_cache_generated_at"),
+        ("health", "generated_at"),
+    ]
+    cache: dict = {}
+    for src, key in candidates:
+        try:
+            if src not in cache:
+                cache[src] = get_status() if src == "status" else get_health()
+            raw = str(cache[src].get(key) or "")[:10]
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except Exception:  # noqa: BLE001
+            continue
+    return date.today()
+
+
+def periodo_referencia() -> dict:
+    """Determina o mes de referencia a partir do frescor do cache da fonte.
+
+    Usa a data de geracao do cache como "hoje" comercial e conta dias uteis.
+    """
+    as_of = _as_of_date()
 
     ref_year, ref_month = as_of.year, as_of.month
     month_start = date(ref_year, ref_month, 1)

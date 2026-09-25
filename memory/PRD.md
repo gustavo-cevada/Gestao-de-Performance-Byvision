@@ -98,3 +98,11 @@ Ver /app/memory/test_credentials.md
 - Iteração 7.1: rótulos da Parametrização agora propagam para TODAS as telas (mesma chave por conceito): tela do cliente (`Ritmo da meta`→title_ritmo, `Faturado`→kpi_faturado, `Previsionado`→kpi_previsionado, `Meta do mês`→metric_meta_mes, `Meta/dia`→metric_meta_dia) e cards de vendedor/cliente-row (`Faturado`/`Meta/dia`). Novo `metric_saldo_mes` ("Saldo/mês (R$)") exibido na tela do cliente = max(0, meta−faturado). ConfigProvider revalida (staleTime 0 + refetchOnMount/onWindowFocus) para refletir mudanças sem reload.
 - P2: migrar `shadow*` → `boxShadow`; limpar estilos órfãos em dashboard.tsx.
 - P2 (backlog anterior): contato rápido (WhatsApp), metas em massa, exportar CRM, gráfico de produtos por cliente, pódio de vendedores.
+
+### Integração externa — atualização de contrato (Audax CRM API / SGO)
+- Nova base URL/chave já em backend/.env (DW_API_URL=https://audaxccrm.duckdns.org:9443, DW_API_KEY).
+- dw_client.py atualizado ao novo contrato:
+  - Endpoint /vendedores foi REMOVIDO. Lista de vendedores agora é derivada agregando GET /clientes por cod_vendedor (nome/ativo/qt_clientes). Novo helper _all_clientes() pagina todos os clientes.
+  - /health não traz mais dm_valorcompra_ultima. periodo_referencia agora usa a data de geração do cache: /status.cache_generated_at -> /health.generated_at -> data local (_as_of_date). get_health passou a enviar X-API-Key; novo get_status (sem chave).
+  - get_clientes(cod_vendedor), get_compras e cálculo de faturado (situacao_pedido=='F', data_baixa) seguem compatíveis. /clientes já retorna razao_social/nome_fantasia (subtítulo) e tipo_cadastro; /clientes/{cod}/compras traz cod_vendedor_venda (não usado ainda).
+- AÇÃO do usuário: rodar "Sincronizar todos" no admin para repovoar vendedores/clientes com o novo contrato (a 1ª sincronização de lista é mais pesada). Testes com a API real serão feitos pelo próprio usuário.
