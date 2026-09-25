@@ -886,13 +886,20 @@ async def admin_sync_vendedor(cod: int, user=Depends(require_role("admin"))):
 # ---------------------------------------------------------------------------
 @api.post("/sync")
 async def sync_now(user=Depends(current_user)):
+    # Sync roda em segundo plano: a API externa e lenta (varias chamadas por
+    # cliente) e uma execucao sincrona estouraria o timeout da requisicao.
     if user.get("role") == "admin":
-        await refresh_period()
-        await refresh_vendedores()
-        return {"ok": True}
+        async def _bg_meta() -> None:
+            try:
+                await refresh_period()
+                await refresh_vendedores()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("refresh admin falhou: %s", exc)
+        asyncio.create_task(_bg_meta())
+        return {"ok": True, "syncing": True}
     cod = int(user["cod_vendedor"])
-    await run_vendedor_sync(cod)
-    return {"ok": True}
+    asyncio.create_task(_bg_vendedor_sync(cod))
+    return {"ok": True, "syncing": True}
 
 
 @api.get("/status")

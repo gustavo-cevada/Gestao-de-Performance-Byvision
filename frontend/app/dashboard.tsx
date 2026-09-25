@@ -92,8 +92,10 @@ export default function DashboardScreen() {
   const sync = useMutation({
     mutationFn: () => apiFetch("/sync", { method: "POST" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast("Vendas atualizadas em tempo real", "success");
+      toast("Atualizando dados em segundo plano…", "success");
+      // a sincronizacao roda no servidor; recarrega apos alguns segundos
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["dashboard"] }), 8000);
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["dashboard"] }), 25000);
     },
     onError: () => toast("Falha ao atualizar dados", "error"),
   });

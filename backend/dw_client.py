@@ -27,7 +27,7 @@ DW_RESP_ID = os.environ["DW_RESP_ID"]
 VENDEDOR_COD = int(os.environ["VENDEDOR_COD"])
 
 _HEADERS = {"X-API-Key": DW_API_KEY}
-_TIMEOUT = 30
+_TIMEOUT = (8, 30)  # (connect, read) — connect curto p/ falhar rapido em host instavel
 
 
 def _get(path: str, params: dict | None = None):

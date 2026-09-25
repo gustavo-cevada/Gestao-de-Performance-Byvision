@@ -106,3 +106,8 @@ Ver /app/memory/test_credentials.md
   - /health não traz mais dm_valorcompra_ultima. periodo_referencia agora usa a data de geração do cache: /status.cache_generated_at -> /health.generated_at -> data local (_as_of_date). get_health passou a enviar X-API-Key; novo get_status (sem chave).
   - get_clientes(cod_vendedor), get_compras e cálculo de faturado (situacao_pedido=='F', data_baixa) seguem compatíveis. /clientes já retorna razao_social/nome_fantasia (subtítulo) e tipo_cadastro; /clientes/{cod}/compras traz cod_vendedor_venda (não usado ainda).
 - AÇÃO do usuário: rodar "Sincronizar todos" no admin para repovoar vendedores/clientes com o novo contrato (a 1ª sincronização de lista é mais pesada). Testes com a API real serão feitos pelo próprio usuário.
+
+### Reformulação da tela do cliente — status
+- Bug do Refresh (vendedor "Falha ao atualizar dados") CORRIGIDO: POST /api/sync agora roda em background (retorna 200 na hora); connect timeout do dw_client = 8s. Testado pelo testing agent (iteration_7.json / test_sync_bugfix.py).
+- Documento de integração `/app/memory/CLIENTE_DETALHE_INTEGRACAO.md` EXPANDIDO com as respostas do usuário: seção 7 (spec para a equipe da API: endpoint de itens por pedido/dia com `tipo` surfaçado/acabado, campo de classificação, janelas do Top produtos, regras de reconciliação devolução/CFOP, relação família↔código, meta só no mês atual, performance porta 9443) e seção 8 (perguntas abertas para a API).
+- Bloco construível com dados em cache (indicadores mês, média, tendência, faturamento por dia com meta diária, seleção de mês) AGUARDANDO decisão do usuário (msg de escopo). Bloco de produtos bloqueado até a API criar os endpoints/estabilizar a porta 9443.

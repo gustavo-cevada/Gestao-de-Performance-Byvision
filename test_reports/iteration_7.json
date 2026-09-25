@@ -1,0 +1,33 @@
+{
+  "summary": "Iteracao 8 (bugfix /api/sync): Backend 5/5 pytest passam. POST /api/sync como VAGNER retorna 200 em <1s com {ok:true, syncing:true}; como admin idem <1s. Regressoes OK: GET /api/dashboard (VAGNER) 200 com clients (list), total_em_risco (int), kpi; GET /api/config 200; GET /api/admin/vendedores 200 e agora todos os vendedores possuem campo 'sem_meta' (bug da iteracao 7 resolvido). Frontend: login VAGNER/vagner123 → dashboard carrega → tap em sync-button (icone refresh no header) exibe toast 'Atualizando dados em segundo plano…' em 0.63s; NENHUM toast 'Falha ao atualizar dados' aparece. Bugfix confirmado.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web shadow*", "issue": "Warning nao-bloqueante 'shadow* style props are deprecated. Use boxShadow.' (recorrente)."},
+      {"component": "pointerEvents prop", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents' em toast/overlay. Nao-bloqueante."},
+      {"component": "Animated useNativeDriver", "issue": "'useNativeDriver is not supported ... Falling back to JS-based animation' no toast — inofensivo em web preview."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sync_bugfix.py",
+    "/app/test_reports/pytest/iteration8_sync_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L887-L902 (/api/sync): agora usa asyncio.create_task para admin (_bg_meta com refresh_period+refresh_vendedores) e para vendedor (_bg_vendedor_sync). Retorno imediato {ok:true, syncing:true}. Correto.",
+    "server.py L95-L110 (_bg_vendedor_sync): dedupe via _syncing_vendedores set + flag persistente em db.vendedores; try/except loga erros sem crashar o loop. Correto.",
+    "dashboard.tsx L92-L101: onSuccess exibe toast success e agenda 2 invalidateQueries (8s, 25s) para refletir dados apos sync; onError mostra toast erro. Ok — o timeout do fetch nao dispara mais pois o backend responde rapido."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sync_bugfix.py (novo)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (bugfix validado)"},
+  "seed_data_creation": "Nenhum. Os POST /api/sync executados disparam background tasks internas mas nao alteram dados persistentes relevantes (apenas atualizam flags syncing/deep_synced).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bugfix /api/sync (iteracao 8) validado: backend responde <1s e frontend exibe toast success 'Atualizando dados em segundo plano…'. TestIDs relevantes: login-identifier-input, login-password-input, login-submit-button, sync-button (header dashboard), sync-banner (aparece apenas enquanto mutation isPending). NAO clicar 'Sincronizar todos' (/api/admin/vendedores/sync-all) — muito pesado.",
+  "rca_of_issue": "Bug original: POST /api/sync executava sincronizacao sincronamente (dw.get_clientes + compras_window para ~210 clientes) — a API externa audaxccrm.duckdns.org:9443 tem ConnectTimeout intermitente em endpoints pesados, o que estourava o timeout da requisicao HTTP e o React Query disparava onError → toast 'Falha ao atualizar dados'. Correcao aplicada (server.py L887-L902): endpoint agora cria task de background (asyncio.create_task) e retorna imediatamente {ok:true, syncing:true}. Reproducao: login VAGNER → tap refresh → esperado toast success em <1s (validado). Verificacao adicional: /api/status expoe flag syncing para observabilidade futura."
+}
