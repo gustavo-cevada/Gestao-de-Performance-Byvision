@@ -99,7 +99,13 @@ Ver /app/memory/test_credentials.md
 - P2: migrar `shadow*` → `boxShadow`; limpar estilos órfãos em dashboard.tsx.
 - P2 (backlog anterior): contato rápido (WhatsApp), metas em massa, gráfico de produtos por cliente, pódio de vendedores.
 
-### Exportar CRM (2026-06) — implementado
+### Atraso/dados incompletos ao abrir cliente (2026-06) — CORRIGIDO
+- **Causa raiz:** no sync em lote (`compras_window`), a API Audax (9443) instável dava timeout para muitos clientes; `_compras_f_list` engolia o erro e retornava `[]`, gravando `compras_f` vazio (apagando histórico). Sem retry e sem distinguir "sem compras" de "falha". Resultado: 67% da base (1596/2394) com `compras_f` vazio; ao abrir, a tela ficava sem histórico até o fetch preguiçoso em 2º plano popular o cache — daí o atraso.
+- **Correção (3 pontos):**
+  1. **Sync resiliente:** `_compras_f_list` agora levanta exceção (não mascara); `_compras_f_retry` faz 3 tentativas com backoff (0.5/1/2s). `compras_window` retorna `{cod: list | None}` (None = falhou). `run_vendedor_sync` NUNCA sobrescreve `compras_f` com vazio quando falha — preserva o último dado bom e marca `sync_pending=True`.
+  2. **Gap-fill em 2º plano:** `run_gap_fill(cod_vendedor)` reprocessa em passadas (3) só os `sync_pending=True`, preenchendo até completar. Disparado ao fim de cada `run_vendedor_sync` via `create_task`.
+  3. **Menos carga na API:** read-timeout 20→45s; concorrência do `compras_window` 10→5 workers.
+- **Heal aplicado ao VAGNER (204):** 29 clientes furados → 12 curados com dado real; 17 restantes são genuinamente antigos (última compra fora da janela de 12m → 0 correto, marcados como não-pendentes). Validado: `GET /api/clients/5399` retorna 13 meses e 40 pedidos instantâneo. Demais vendedores curam automaticamente no próximo "Sincronizar".
 - Tela CRM (`/crm`) ganhou botão "Exportar" (ao lado da contagem de clientes) que gera um CSV da lista **filtrada** (respeita cidade/cliente/status/busca).
 - Colunas: Rank, Código, Cliente, CNPJ, Cidade, UF, Dias sem compra, Status, Movimento, Faturamento 12m.
 - Cross-platform: helper `src/lib/export-csv.ts`. Web dispara download; nativo grava no cache (expo-file-system) e abre o compartilhamento (expo-sharing). CSV com BOM (acentos no Excel) e delimitador ";" (padrão pt-BR).

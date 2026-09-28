@@ -59,15 +59,26 @@ async def run_vendedor_sync(cod_vendedor: int) -> dict:
 
     janelas = await asyncio.to_thread(dw.compras_window, cods, window_start)
 
+    n_fail = 0
     for c in clientes:
         cod = str(c.get("cod_cliente"))
-        compras_f = janelas.get(cod, [])
-        faturado_mes = round(sum(r["v"] for r in compras_f if r["d"][:7] == ref_prefix), 2)
+        janela = janelas.get(cod)  # list (sucesso, pode ser vazia=genuino) | None (falhou)
         doc = dict(c)
         doc["cod_cliente"] = cod
         doc["cod_vendedor"] = cod_vendedor
+        if janela is None:
+            # falha na busca: NUNCA sobrescreve com vazio; preserva o ultimo dado bom
+            prev = await db.clients.find_one({"cod_cliente": cod}, {"_id": 0, "compras_f": 1})
+            compras_f = (prev or {}).get("compras_f") or []
+            doc["compras_f"] = compras_f
+            doc["sync_pending"] = True
+            n_fail += 1
+        else:
+            compras_f = janela
+            doc["compras_f"] = compras_f
+            doc["sync_pending"] = False
+        faturado_mes = round(sum(r["v"] for r in compras_f if r["d"][:7] == ref_prefix), 2)
         doc["faturado_mes"] = faturado_mes
-        doc["compras_f"] = compras_f
         await db.clients.update_one({"cod_cliente": cod}, {"$set": doc}, upsert=True)
         existing = await db.metas.find_one({"cod_cliente": cod})
         if not existing:
@@ -85,11 +96,54 @@ async def run_vendedor_sync(cod_vendedor: int) -> dict:
             "synced_period": ref_prefix,
             "synced_at": datetime.now(timezone.utc).isoformat(),
             "qt_synced": len(clientes),
+            "qt_pending": n_fail,
         }},
         upsert=True,
     )
-    logger.info("Sync DW vendedor %s: concluido (%d clientes).", cod_vendedor, len(clientes))
-    return {"cod_vendedor": cod_vendedor, "qt": len(clientes)}
+    logger.info(
+        "Sync DW vendedor %s: concluido (%d clientes, %d pendentes).",
+        cod_vendedor, len(clientes), n_fail,
+    )
+    # preenchimento de lacunas em segundo plano: reprocessa os clientes que
+    # falharam (compras_f vazio mas com historico real) ate completar.
+    asyncio.create_task(run_gap_fill(cod_vendedor))
+    return {"cod_vendedor": cod_vendedor, "qt": len(clientes), "pending": n_fail}
+
+
+async def run_gap_fill(cod_vendedor: int, passes: int = 3) -> None:
+    """Reprocessa clientes do vendedor com compras_f vazio porem com historico
+    real (total_compras_rs > 0), em varias passadas, ate preencher.
+
+    Roda em segundo plano e nunca sobrescreve dado bom com vazio.
+    """
+    cod_vendedor = int(cod_vendedor)
+    period = await get_period()
+    if not period:
+        return
+    ry, rm = int(period.get("ref_year")), int(period.get("ref_month"))
+    window_start = f"{ry - 1}-{rm:02d}-01"
+    ref_prefix = f"{ry}-{rm:02d}"
+
+    for p in range(passes):
+        q = {"cod_vendedor": cod_vendedor, "sync_pending": True}
+        pend = [c["cod_cliente"] async for c in db.clients.find(q, {"_id": 0, "cod_cliente": 1})]
+        if not pend:
+            logger.info("Gap-fill vendedor %s: nada pendente (passada %d).", cod_vendedor, p + 1)
+            return
+        logger.info("Gap-fill vendedor %s: %d pendentes (passada %d).", cod_vendedor, len(pend), p + 1)
+        for i in range(0, len(pend), 20):
+            batch = pend[i:i + 20]
+            janelas = await asyncio.to_thread(dw.compras_window, batch, window_start)
+            for cod in batch:
+                janela = janelas.get(cod)
+                if janela is None:
+                    continue  # ainda falhando; tenta na proxima passada
+                faturado_mes = round(sum(r["v"] for r in janela if r["d"][:7] == ref_prefix), 2)
+                await db.clients.update_one(
+                    {"cod_cliente": cod},
+                    {"$set": {"compras_f": janela, "faturado_mes": faturado_mes, "sync_pending": False}},
+                )
+    logger.info("Gap-fill vendedor %s: finalizado.", cod_vendedor)
 
 
 async def _bg_vendedor_sync(cod_vendedor: int) -> None:

@@ -7,6 +7,7 @@ faturamento do mes corrente por cliente.
 """
 import os
 import logging
+import time
 from pathlib import Path
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
@@ -27,7 +28,8 @@ DW_RESP_ID = os.environ["DW_RESP_ID"]
 VENDEDOR_COD = int(os.environ["VENDEDOR_COD"])
 
 _HEADERS = {"X-API-Key": DW_API_KEY}
-_TIMEOUT = (8, 20)  # (connect, read) — curto p/ falhar rápido em host instável
+_TIMEOUT = (8, 45)  # (connect, read) — read maior p/ aguentar a API pesada de compras
+_MAX_RETRIES = 3    # tentativas por cliente antes de considerar falha
 
 
 def _get(path: str, params: dict | None = None):
@@ -186,9 +188,16 @@ def faturamento_todos(cods: list[str], desde: str, ate: str) -> dict:
 
 
 def _compras_f_list(cod: str, desde: str) -> list[dict]:
-    """Lista de compras FATURADAS [{d, v}] desde uma data (janela)."""
+    """Lista de compras FATURADAS [{d, v}] desde uma data (janela).
+
+    NAO mascara erros: levanta excecao em falha de rede/HTTP para que o
+    chamador possa distinguir "cliente sem compras" (lista vazia) de
+    "falha na sincronizacao" (excecao) e preservar o dado anterior.
+    """
+    data = _get(f"/clientes/{cod}/compras", {"desde": desde})  # pode levantar
+    rows = data if isinstance(data, list) else data.get("itens", [])
     out = []
-    for row in get_compras(cod, desde):
+    for row in rows:
         if str(row.get("situacao_pedido")) != "F":
             continue
         d = str(row.get("data_baixa", ""))[:10]
@@ -198,17 +207,34 @@ def _compras_f_list(cod: str, desde: str) -> list[dict]:
     return out
 
 
+def _compras_f_retry(cod: str, desde: str, retries: int = _MAX_RETRIES) -> list[dict]:
+    """Busca a janela com retry + backoff. Levanta a ultima excecao se falhar."""
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            return _compras_f_list(cod, desde)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s, 2s
+    raise last_exc if last_exc else RuntimeError("compras_f falhou")
+
+
 def compras_window(cods: list[str], desde: str) -> dict:
-    """Busca em paralelo a janela de compras faturadas de varios clientes."""
-    result: dict[str, list] = {}
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        futures = {pool.submit(_compras_f_list, c, desde): c for c in cods}
+    """Janela de compras faturadas por cliente.
+
+    Retorna {cod: [{d,v}] | None}. `None` = a busca falhou apos os retries
+    (o chamador deve PRESERVAR o dado anterior, nunca sobrescrever com vazio).
+    Concorrencia reduzida para nao sobrecarregar a API instavel.
+    """
+    result: dict[str, list | None] = {}
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {pool.submit(_compras_f_retry, c, desde): c for c in cods}
         for fut in futures:
             cod = futures[fut]
             try:
                 result[cod] = fut.result()
             except Exception:  # noqa: BLE001
-                result[cod] = []
+                result[cod] = None
     return result
 
 
