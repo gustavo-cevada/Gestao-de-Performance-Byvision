@@ -5,7 +5,7 @@ import requests
 
 BASE_URL = os.environ.get(
     "EXPO_PUBLIC_BACKEND_URL",
-    "https://metas-admin-staging.preview.emergentagent.com",
+    "https://meta-tracker-app-1.preview.emergentagent.com",
 ).rstrip("/")
 API = f"{BASE_URL}/api"
 

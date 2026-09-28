@@ -21,6 +21,7 @@ type Detail = {
   ref_month: string;
   ref_exp: number;
   dias_uteis_ref: number;
+  period?: { as_of?: string };
 };
 
 const STATUS_META: Record<string, { label: string; tone: "success" | "warning" | "error" }> = {
@@ -175,6 +176,7 @@ export default function ClientDetail() {
           refMonth={data.ref_month}
           refExp={data.ref_exp}
           diasUteisRef={data.dias_uteis_ref}
+          asOf={data.period?.as_of ? String(data.period.as_of).slice(0, 10) : undefined}
         />
       </ScrollView>
     </View>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { Icon } from "@/src/components/icon";
@@ -29,6 +29,7 @@ type Props = {
   refMonth: string; // YYYY-MM
   refExp: number; // 0..1 ritmo de dias úteis do mês corrente
   diasUteisRef: number; // dias úteis do mês de referência (líquido de feriados)
+  asOf?: string; // data "hoje" (YYYY-MM-DD) — limita dias renderizados no mês corrente
 };
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -66,27 +67,23 @@ function isWeekday(ym: string, day: number) {
   return d >= 1 && d <= 5;
 }
 
-// Abreviações de nome (apresentação apenas)
-export function abbreviate(name: string | null): string {
-  if (!name) return "—";
-  let s = name;
-  s = s.replace(/Byvision/gi, "Byv");
-  s = s.replace(/Freeform/gi, "");
-  s = s.replace(/Antiblue\s*UV/gi, "Blue");
-  s = s.replace(/Supercoat/gi, "AR");
-  return s.replace(/\s{2,}/g, " ").trim();
-}
-// serviços (ex.: Montagem) não são produtos — não entram nas listas de produtos
-function isService(name: string | null): boolean {
-  if (!name) return false;
-  return /montagem|servi[çc]o|m[aã]o\s*de\s*obra/i.test(name);
-}
+// Rótulo do tipo, a partir da classificação canônica vinda do backend
+// (SURFACADO / ACABADO / SERVICO / CONFERIR).
 function tipoLabel(t: string | null | undefined): string {
-  if (!t) return "—";
-  const u = t.toUpperCase();
+  const u = (t || "").toUpperCase();
   if (u === "SURFACADO") return "Surfaçado";
   if (u === "ACABADO") return "Acabado";
-  return t.charAt(0) + t.slice(1).toLowerCase();
+  if (u === "SERVICO") return "Serviço";
+  if (u === "CONFERIR") return "Conferir";
+  return t ? t.charAt(0) + t.slice(1).toLowerCase() : "—";
+}
+// Cor por tipo: Surfaçado=brand, Acabado=warning, Serviço=info/muted, Conferir=erro (para chamar atenção)
+function tipoColor(t: string | null | undefined, colors: any): string {
+  const u = (t || "").toUpperCase();
+  if (u === "SURFACADO") return colors.brand;
+  if (u === "ACABADO") return colors.warning;
+  if (u === "SERVICO") return colors.onSurfaceSecondary;
+  return colors.error; // CONFERIR / desconhecido
 }
 function media(map: Record<string, number>, months: string[]): { avg: number; n: number } {
   const vals = months.map((m) => map[m] ?? 0).filter((v) => v > 0);
@@ -94,9 +91,12 @@ function media(map: Record<string, number>, months: string[]): { avg: number; n:
   return { avg: vals.reduce((a, b) => a + b, 0) / vals.length, n: vals.length };
 }
 
-export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth, refExp, diasUteisRef }: Props) {
+export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth, refExp, diasUteisRef, asOf }: Props) {
   const styles = useStyles();
   const { colors } = useTheme();
+
+  const monthScrollRef = useRef<ScrollView>(null);
+  const dayScrollRef = useRef<ScrollView>(null);
 
   const mensalMap = useMemo(() => {
     const m: Record<string, number> = {};
@@ -145,27 +145,42 @@ export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth,
   const maxMensal = Math.max(1, ...chartMonths.map((m) => mensalMap[m] ?? 0), metaMensal || 0);
 
   // ---- gráfico diário do mês selecionado ----
+  // não renderiza dias futuros: no mês corrente (== asOf) limita ao dia de hoje;
+  // meses passados vão até o último dia do mês. Só dias úteis (+ não úteis c/ faturamento).
   const dailyBars = useMemo(() => {
-    const n = daysInMonth(selMonth);
+    const totalDays = daysInMonth(selMonth);
+    const isCurrent = !!asOf && asOf.slice(0, 7) === selMonth;
+    const lastDay = isCurrent ? Math.min(totalDays, Number(asOf!.slice(8, 10))) : totalDays;
     const byDay: Record<string, number> = {};
     pedidos.forEach((p) => {
       if (p.data.slice(0, 7) === selMonth) byDay[p.data] = (byDay[p.data] ?? 0) + p.valor;
     });
-    return Array.from({ length: n }, (_, i) => {
+    return Array.from({ length: lastDay }, (_, i) => {
       const day = i + 1;
       const key = `${selMonth}-${String(day).padStart(2, "0")}`;
       return { day, key, valor: byDay[key] ?? 0, weekday: isWeekday(selMonth, day) };
     }).filter((d) => d.weekday || d.valor > 0); // só dias úteis (+ não úteis com faturamento)
-  }, [pedidos, selMonth]);
+  }, [pedidos, selMonth, asOf]);
   const maxDaily = Math.max(1, ...dailyBars.map((d) => d.valor));
   const metaDia = selMonth === refMonth && metaMensal > 0 && diasUteisRef > 0 ? metaMensal / diasUteisRef : 0;
+
+  // Posição inicial dos gráficos no período mais recente (mês/dia atual à direita).
+  useEffect(() => {
+    const t = setTimeout(() => monthScrollRef.current?.scrollToEnd({ animated: false }), 60);
+    return () => clearTimeout(t);
+  }, []);
+  // Ao trocar o mês, reposiciona o gráfico diário no dia mais recente disponível.
+  useEffect(() => {
+    const t = setTimeout(() => dayScrollRef.current?.scrollToEnd({ animated: false }), 60);
+    return () => clearTimeout(t);
+  }, [selMonth, dailyBars.length]);
 
   // ---- produtos do dia ----
   const produtosDia = useMemo(() => {
     if (!selDay) return [];
     const rows: Record<string, { familia: string | null; codigos: Set<string>; tipo: string | null; qtd: number; valor: number }> = {};
     itens
-      .filter((it) => it.data === selDay && !isService(it.familia))
+      .filter((it) => it.data === selDay)
       .forEach((it) => {
         const key = (it.familia || "") + "|" + (it.tipo || "");
         const r = (rows[key] ||= { familia: it.familia, codigos: new Set(), tipo: it.tipo, qtd: 0, valor: 0 });
@@ -181,9 +196,9 @@ export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth,
     const wMonths = new Set<string>([refMonth, ...prevMonths(refMonth, topWindow - 1)]);
     const rows: Record<string, { familia: string | null; codigos: Set<string>; tipo: string | null; qtd: number; valor: number }> = {};
     itens
-      .filter((it) => wMonths.has(it.data.slice(0, 7)) && !isService(it.familia))
+      .filter((it) => wMonths.has(it.data.slice(0, 7)))
       .forEach((it) => {
-        const key = it.familia || it.codigo;
+        const key = (it.familia || it.codigo) + "|" + (it.tipo || "");
         const r = (rows[key] ||= { familia: it.familia, codigos: new Set(), tipo: it.tipo, qtd: 0, valor: 0 });
         if (it.codigo) r.codigos.add(it.codigo);
         r.qtd += it.qtd;
@@ -219,12 +234,12 @@ export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth,
         <View style={styles.indGrid}>
           <Indicator label="Faturamento do mês" value={formatBRL(fatMes)} />
           <Indicator label="Média de compra/mês" value={media12.n ? formatBRL(media12.avg) : "—"} hint={media12.n ? `12 meses (${media12.n} c/ compra)` : "sem histórico"} />
-          <Indicator label="Ticket médio de surfaçados" value={ticketSurf != null ? formatBRL(ticketSurf) : "—"} hint="por pedido no mês" />
+          <Indicator label="Ticket médio de surfaçados" value={ticketSurf != null ? formatBRL(ticketSurf) : "Sem pedidos surfaçados"} hint={ticketSurf != null ? "por pedido no mês" : "no mês selecionado"} />
           <TrendIndicator t={tendencia} />
         </View>
 
         {/* gráfico de barras mensal */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthScroll}>
+        <ScrollView ref={monthScrollRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthScroll}>
           {chartMonths.map((ym) => {
             const v = mensalMap[ym] ?? 0;
             const h = Math.max(2, (v / maxMensal) * 120);
@@ -252,7 +267,7 @@ export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth,
       {/* ================= FATURAMENTO POR DIA ================= */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Faturamento por dia — {monthLong(selMonth)}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayScroll}>
+        <ScrollView ref={dayScrollRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayScroll}>
           <View style={styles.dayInner}>
             {metaDia > 0 && (
               <View style={[styles.metaLineDaily, { top: 6 + (110 - Math.max(1, (metaDia / maxDaily) * 110)) }]} />
@@ -286,12 +301,7 @@ export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth,
           {produtosDia.length === 0 ? (
             <Text style={styles.muted}>Nenhum produto faturado neste dia.</Text>
           ) : (
-            <>
-              <ProdHeader />
-              {produtosDia.map((r, i) => (
-                <ProdRow key={i} familia={r.familia} codigos={Array.from(r.codigos)} tipo={r.tipo} qtd={r.qtd} valor={r.valor} />
-              ))}
-            </>
+            <ProductTable rows={produtosDia} />
           )}
         </View>
       )}
@@ -329,12 +339,7 @@ export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth,
         {topProdutos.length === 0 ? (
           <Text style={styles.muted}>Sem produtos na janela selecionada.</Text>
         ) : (
-          <>
-            <ProdHeader rank />
-            {topProdutos.slice(0, topN).map((r, i) => (
-              <ProdRow key={i} rank={i + 1} familia={r.familia} codigos={Array.from(r.codigos)} tipo={r.tipo} qtd={r.qtd} valor={r.valor} />
-            ))}
-          </>
+          <ProductTable rows={topProdutos.slice(0, topN)} rank />
         )}
       </View>
 
@@ -363,8 +368,8 @@ export function ClientAnalytics({ mensais, pedidos, itens, metaMensal, refMonth,
                       <View style={styles.tipoTags}>
                         <Text style={styles.recentPed}>Pedido {p.id_pedido}</Text>
                         {p.tipos.map((t) => (
-                          <View key={t} style={[styles.tipoTag, { borderColor: t.toUpperCase() === "SURFACADO" ? colors.brand : colors.warning }]}>
-                            <Text style={[styles.tipoTagText, { color: t.toUpperCase() === "SURFACADO" ? colors.brand : colors.warning }]}>{tipoLabel(t)}</Text>
+                          <View key={t} style={[styles.tipoTag, { borderColor: tipoColor(t, colors) }]}>
+                            <Text style={[styles.tipoTagText, { color: tipoColor(t, colors) }]}>{tipoLabel(t)}</Text>
                           </View>
                         ))}
                       </View>
@@ -413,39 +418,52 @@ function TrendIndicator({ t }: { t: { varPct: number; dir: string; isRef: boolea
   );
 }
 
-function ProdHeader({ rank }: { rank?: boolean }) {
-  const styles = useStyles();
-  return (
-    <View style={styles.prodHead}>
-      {rank && <Text style={[styles.prodH, { width: 24 }]}>#</Text>}
-      <Text style={[styles.prodH, { width: 66 }]}>Tipo</Text>
-      <Text style={[styles.prodH, { flex: 1 }]}>Produto</Text>
-      <Text style={[styles.prodH, { width: 40, textAlign: "right" }]}>UN</Text>
-      <Text style={[styles.prodH, { width: 84, textAlign: "right" }]}>Total</Text>
-    </View>
-  );
-}
+type PRow = { familia: string | null; codigos: Set<string> | string[]; tipo: string | null; qtd: number; valor: number };
 
-function ProdRow({ rank, familia, codigos, tipo, qtd, valor }: { rank?: number; familia: string | null; codigos: string[]; tipo: string | null; qtd: number; valor: number }) {
+// Grade de produtos com rolagem horizontal (preserva colunas e nomes completos,
+// sem abreviar nem cortar). Cabeçalho alinhado; código menor abaixo do nome.
+function ProductTable({ rows, rank }: { rows: PRow[]; rank?: boolean }) {
   const styles = useStyles();
   const { colors } = useTheme();
-  const codeLabel = codigos.length <= 1 ? codigos[0] || "—" : `${codigos.slice().sort()[0]} +${codigos.length - 1}`;
-  const isSurf = (tipo || "").toUpperCase() === "SURFACADO";
+  const W = { rank: 30, tipo: 96, prod: 220, un: 62, total: 108 };
   return (
-    <View style={styles.prodRow}>
-      {rank != null && <Text style={[styles.prodRank, { width: 24 }]}>{rank}</Text>}
-      <View style={{ width: 66 }}>
-        <View style={[styles.prodTipo, { borderColor: isSurf ? colors.brand : colors.warning }]}>
-          <Text style={[styles.prodTipoText, { color: isSurf ? colors.brand : colors.warning }]} numberOfLines={1}>{tipoLabel(tipo)}</Text>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator
+      nestedScrollEnabled
+      contentContainerStyle={{ minWidth: "100%" }}
+    >
+      <View>
+        <View style={styles.prodHead}>
+          {rank && <Text style={[styles.prodH, { width: W.rank }]}>#</Text>}
+          <Text style={[styles.prodH, { width: W.tipo }]}>Tipo</Text>
+          <Text style={[styles.prodH, { width: W.prod }]}>Produto</Text>
+          <Text style={[styles.prodH, { width: W.un, textAlign: "right" }]}>Qtd (UN)</Text>
+          <Text style={[styles.prodH, { width: W.total, textAlign: "right" }]}>Total (R$)</Text>
         </View>
+        {rows.map((r, i) => {
+          const codigos = Array.isArray(r.codigos) ? r.codigos : Array.from(r.codigos);
+          const codeLabel = codigos.length <= 1 ? codigos[0] || "—" : `${codigos.slice().sort()[0]} +${codigos.length - 1}`;
+          const col = tipoColor(r.tipo, colors);
+          return (
+            <View key={i} style={styles.prodRow}>
+              {rank && <Text style={[styles.prodRank, { width: W.rank }]}>{i + 1}</Text>}
+              <View style={{ width: W.tipo }}>
+                <View style={[styles.prodTipo, { borderColor: col }]}>
+                  <Text style={[styles.prodTipoText, { color: col }]} numberOfLines={1}>{tipoLabel(r.tipo)}</Text>
+                </View>
+              </View>
+              <View style={{ width: W.prod, paddingRight: 10 }}>
+                <Text style={styles.prodName}>{r.familia || "—"}</Text>
+                <Text style={styles.prodCode}>{codeLabel}</Text>
+              </View>
+              <Text style={[styles.prodQtd, { width: W.un }]}>{Math.round(r.qtd)}</Text>
+              <Text style={[styles.prodTotal, { width: W.total }]}>{formatBRL(r.valor)}</Text>
+            </View>
+          );
+        })}
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.prodName} numberOfLines={1}>{abbreviate(familia)}</Text>
-        <Text style={styles.prodCode}>{codeLabel}</Text>
-      </View>
-      <Text style={[styles.prodQtd, { width: 40 }]}>{Math.round(qtd)}</Text>
-      <Text style={[styles.prodTotal, { width: 84 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatBRL(valor)}</Text>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -497,14 +515,14 @@ const useStyles = makeStyles((c) => ({
 
   prodHead: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: c.border },
   prodH: { fontFamily: fonts.semibold, fontSize: 10.5, color: c.muted, textTransform: "uppercase" },
-  prodRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border },
-  prodRank: { fontFamily: fonts.numBold, fontSize: 12, color: c.muted, textAlign: "center" },
+  prodRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border },
+  prodRank: { fontFamily: fonts.numBold, fontSize: 12, color: c.muted, textAlign: "center", paddingTop: 2 },
   prodTipo: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2, alignSelf: "flex-start" },
   prodTipoText: { fontFamily: fonts.semibold, fontSize: 9.5 },
-  prodName: { fontFamily: fonts.semibold, fontSize: 12.5, color: c.onSurface },
-  prodCode: { fontFamily: fonts.numMedium, fontSize: 10.5, color: c.muted },
-  prodQtd: { fontFamily: fonts.numMedium, fontSize: 12, color: c.onSurface, textAlign: "right" },
-  prodTotal: { fontFamily: fonts.numBold, fontSize: 12, color: c.onSurface, textAlign: "right" },
+  prodName: { fontFamily: fonts.semibold, fontSize: 12.5, color: c.onSurface, lineHeight: 16 },
+  prodCode: { fontFamily: fonts.numMedium, fontSize: 10.5, color: c.muted, marginTop: 1 },
+  prodQtd: { fontFamily: fonts.numMedium, fontSize: 12, color: c.onSurface, textAlign: "right", paddingTop: 2 },
+  prodTotal: { fontFamily: fonts.numBold, fontSize: 12, color: c.onSurface, textAlign: "right", paddingTop: 2 },
 
   chipRow: { gap: 8, paddingVertical: 2, paddingRight: 8 },
   chip: { borderWidth: 1, borderColor: c.borderStrong, borderRadius: 999, paddingHorizontal: 12, height: 32, justifyContent: "center" },

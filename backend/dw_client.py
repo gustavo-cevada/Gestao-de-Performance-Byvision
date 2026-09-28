@@ -136,29 +136,23 @@ def get_compras(cod: str, desde: str) -> list[dict]:
 
 
 def get_compras_itens(cod: str, desde: str) -> list[dict]:
-    """Itens por pedido/dia (endpoint /clientes/{cod}/compras-itens), paginando.
+    """Itens por pedido/dia (endpoint /clientes/{cod}/compras-itens).
 
     Retorna item a item com id_pedido, data_baixa (dia), familia_produto,
     codigo_chave, sku, tipo (SURFACADO/ACABADO), grupo, marca, quantidade, valor.
+
+    ATENCAO: o endpoint /compras-itens NAO pagina — ignora os parametros
+    `page`/`page_size` e devolve TODOS os itens em uma unica resposta. Por
+    isso fazemos apenas UMA chamada. (No passado o loop de paginacao repetia
+    a mesma lista dezenas de vezes, inflando o ticket medio de surfacados.)
     """
-    out: list[dict] = []
-    page = 1
-    while True:
-        try:
-            data = _get(f"/clientes/{cod}/compras-itens", {"desde": desde, "page_size": 500, "page": page})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("compras-itens falhou para %s: %s", cod, exc)
-            break
-        itens = data.get("itens", []) if isinstance(data, dict) else data
-        if not itens:
-            break
-        out.extend(itens)
-        if len(itens) < 500:
-            break
-        page += 1
-        if page > 30:  # guard-rail
-            break
-    return out
+    try:
+        data = _get(f"/clientes/{cod}/compras-itens", {"desde": desde})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("compras-itens falhou para %s: %s", cod, exc)
+        return []
+    itens = data.get("itens", []) if isinstance(data, dict) else data
+    return list(itens or [])
 
 
 def faturamento_periodo(cod: str, desde: str, ate: str) -> float:

@@ -1,0 +1,35 @@
+{
+  "summary": "Iteracao 10 (bugfix client screen): Backend 12/12 pytest passam. GET /api/clients/{3971,7377,5017} como VAGNER e admin retornam 200 em <2s. BUG do ticket medio de surfacados INFLADO -> RESOLVIDO: 3971 tem 925 itens (nao ~19000), ticket_medio R$ 64,13 (era ~R$ 1900+); 7377=505 itens/R$ 87,07; 5017=5618 itens/R$ 48,18. Classificacao correta: nenhum item null; itens agora carregam SURFACADO/ACABADO/SERVICO (3971: {SURFACADO:43, SERVICO:345, ACABADO:537}; 7377: {ACABADO:264,SERVICO:200,SURFACADO:41}; 5017: {ACABADO:3488,SERVICO:2026,SURFACADO:104}). Frontend (mobile 390x844) validado end-to-end: login VAGNER/vagner123 -> dashboard carrega -> tap OTICA DO BAIRRO (3971) abre tela; indicador 'Ticket medio de surfacados R$ 164,57 por pedido no mes' aparece com valor realista; grafico 'Faturamento por mes' inicia posicionado em set/26 (mais recente, extremidade direita); grafico 'Faturamento por dia - setembro de 2026' encerra em 28 (asOf=2026-09-28) SEM dias futuros; tap na barra do dia 28 abre 'Produtos comprados no dia' com tabela horizontal (colunas TIPO/PRODUTO/QTD/TOTAL) e nomes COMPLETOS ('1.56 LIFE G3 DIGITAL INCOLOR', 'PROSIDE EASY', 'MONTAGEM', '1.59 BYVISION SINGLE WHITE FIN HMC - CH1') com codigo menor abaixo do nome; tags de tipo (Surfacado/Servico/Acabado) coloridas render corretamente; chips 12m/6m/3m/2m e topN=5 funcionam em 'Top produtos'; 'Compras recentes' exibe tags de tipo por pedido (Acabado+Servico, Servico+Surfacado, etc.). 5 containers com overflow-x horizontal detectados (ScrollView horizontal + nestedScrollEnabled ok).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web", "issue": "Warnings recorrentes nao-bloqueantes: 'shadow* style props deprecated (use boxShadow)', 'props.pointerEvents deprecated', 'useNativeDriver not supported' — ja reportados em iteracoes anteriores."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_client_bugfix_iter10.py",
+    "/app/test_reports/pytest/iter10_bugfix.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "dw_client.py L138-L155 (get_compras_itens): agora faz UMA chamada e retorna todos os itens (o endpoint /compras-itens ignora page/page_size). Correcao root-cause do ticket inflado. OK.",
+    "server.py L195-L211 (classify_item): usa tipo (SURFACADO/ACABADO) como fonte primaria e cai para grupo=SERVICO quando aplicavel; retorna 'CONFERIR' apenas se realmente nao ha classificacao. Nao ha mais tipo=None nos itens. OK.",
+    "server.py L744-L751 (ticket_medio): calculado a partir do cadastro (total_compras_rs / qtd_pedidos), independente de itens em cache — imune a possiveis reintroducoes de duplicacao futura. Excelente escolha defensiva.",
+    "client-analytics.tsx L150-L163 (dailyBars): limita renderizacao a lastDay = min(totalDays, asOf.day) quando isCurrent — dias futuros NAO renderizam. Correcao verificada visualmente (28/set eh ultima barra).",
+    "client-analytics.tsx L168-L176 (scrollToEnd effects): mes-scroll scrolla no mount; day-scroll re-scrolla ao trocar selMonth/dailyBars.length. Comportamento visual conferido.",
+    "client-analytics.tsx L425-L468 (ProductTable): ScrollView horizontal com nestedScrollEnabled preserva rolagem vertical da pagina. Colunas de largura fixa (Tipo 96, Produto 220, UN 62, Total 108) evitam '...'; codigo menor renderizado abaixo do nome. OK.",
+    "[cod].tsx L179: asOf={data.period?.as_of?.slice(0,10)} passado corretamente para ClientAnalytics."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_client_bugfix_iter10.py (novo)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (todos os fluxos da tela do cliente validados)"},
+  "seed_data_creation": "Nenhum. Testes reusam o client_cache ja curado (11 docs do vendedor 204).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bugfix (iter10) validado: ticket medio de surfacados agora realista (R$ 48-165 nos clientes de teste), itens deduplicados (~925 para 3971 vs ~19000 antes), classificacao SERVICO ativa. Frontend renderiza corretamente charts posicionados em mes/dia mais recentes, sem futuro, tabela de produtos com nomes completos e rolagem horizontal. TestIDs relevantes: month-YYYY-MM, day-YYYY-MM-DD, topwin-{12,6,3,2,1}, topn-input, topn-all. Nao acionar sync pesado; API DW externa esta instavel para /compras-itens de clientes fora do cache atual.",
+  "rca_of_issue": "Root cause: o endpoint externo /clientes/{cod}/compras-itens NAO pagina (ignora page/page_size, devolve TODOS os itens em UMA resposta). O loop antigo de paginacao (while page++) repetia a mesma lista dezenas de vezes (ate ~30x) pois a API ignorava o offset. Resultado: 3971 aparecia com ~19000 itens e ticket_medio de surfacados inflado ~30x. Correcao (dw_client.py get_compras_itens): remocao do while loop, apenas 1 chamada _get() e retorno direto de data['itens']. Verificacao numerica pos-fix: 3971 -> 925 itens (SURFACADO:43 + SERVICO:345 + ACABADO:537), ticket_medio agora R$ 64.13 no cadastro e R$ 164,57 no indicador de surfacados do mes. Mitigacao adicional: server.py calcula ticket_medio a partir de cliente.total_compras_rs/qtd_pedidos (cadastro), imune a possiveis regressoes na duplicacao de itens."
+}

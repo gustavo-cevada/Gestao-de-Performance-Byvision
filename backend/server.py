@@ -192,6 +192,25 @@ def _client_label(c: dict) -> str:
     return (c.get("nome_fantasia") or c.get("razao_social") or "-").strip()
 
 
+def classify_item(it: dict) -> str:
+    """Classificacao canonica do item, baseada nos campos da API (fonte).
+
+    - `tipo` = SURFACADO / ACABADO (fonte primaria).
+    - Sem `tipo`, mas `grupo` indica servico (ex.: SERVIÇOS) -> SERVICO.
+      Cobre Montagem, Coloração e quaisquer outros servicos cadastrados.
+    - Sem classificacao identificavel -> CONFERIR (nao presumir tipo).
+    """
+    tipo = (it.get("tipo") or "").strip().upper()
+    if tipo in ("SURFACADO", "ACABADO"):
+        return tipo
+    grupo = (it.get("grupo") or "").strip().upper()
+    # remove acentos simples p/ casar "SERVIÇOS"/"SERVICOS"
+    grupo_norm = grupo.replace("Ç", "C").replace("Ã", "A").replace("Á", "A")
+    if "SERVIC" in grupo_norm:
+        return "SERVICO"
+    return "CONFERIR"
+
+
 def only_digits(s) -> str:
     return re.sub(r"\D", "", str(s or ""))
 
@@ -665,9 +684,8 @@ async def client_detail(cod: str, user=Depends(current_user)):
     tipos_por_pedido: dict = {}
     for it in itens_f:
         pid = it.get("id_pedido")
-        t = (it.get("tipo") or "").strip().upper()
-        if t:
-            tipos_por_pedido.setdefault(pid, set()).add(t)
+        t = classify_item(it)
+        tipos_por_pedido.setdefault(pid, set()).add(t)
 
     itens_out = [{
         "id_pedido": it.get("id_pedido"),
@@ -675,7 +693,7 @@ async def client_detail(cod: str, user=Depends(current_user)):
         "familia": it.get("familia_produto"),
         "codigo": str(it.get("codigo_chave") or it.get("sku") or ""),
         "sku": it.get("sku"),
-        "tipo": ((it.get("tipo") or "").strip().upper() or None),
+        "tipo": classify_item(it),
         "grupo": it.get("grupo"),
         "marca": it.get("marca"),
         "qtd": float(it.get("quantidade") or 0),
