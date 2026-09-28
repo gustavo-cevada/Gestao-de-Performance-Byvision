@@ -561,7 +561,7 @@ async def crm(vendedor: int | None = Query(default=None), user=Depends(current_u
             "dias_sem_compra": _to_int(c.get("dias_sem_compra")),
             "status": status_crm(c),
             "faturamento_12m": fat12,
-            "faturamento_acumulado": float(c.get("total_compras_rs") or 0.0),
+            "faturamento_acumulado": max(float(c.get("total_compras_rs") or 0.0), fat12),
             "meta": float(metas.get(cod, 0.0)),
         })
 
@@ -749,13 +749,15 @@ async def client_detail(cod: str, user=Depends(current_user)):
     qtd_ped = _to_int(c.get("qtd_pedidos")) or 0
     acumulado = float(c.get("total_compras_rs") or 0.0)
     ticket_medio = round(acumulado / qtd_ped, 2) if qtd_ped > 0 else 0.0
+    # exibir acumulado nunca menor que os 12m (ajuste cosmetico de coerencia)
+    acumulado_exib = max(acumulado, fat12)
     c_clean = {k: v for k, v in c.items() if k != "compras_f"}
 
     return {
         "cliente": {**c_clean, "meta": meta, "faturado": faturado,
                     "pct": round(faturado / meta, 4) if meta > 0 else None,
                     "nome": _client_label(c), "status_crm": status_crm(c),
-                    "faturamento_12m": fat12, "faturamento_acumulado": acumulado,
+                    "faturamento_12m": fat12, "faturamento_acumulado": acumulado_exib,
                     "ticket_medio": ticket_medio, **pace},
         "compras_mensais": mensal_list,
         "compras_recentes": recent,
