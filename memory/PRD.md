@@ -97,7 +97,12 @@ Ver /app/memory/test_credentials.md
 ### Backlog / pendente
 - Iteração 7.1: rótulos da Parametrização agora propagam para TODAS as telas (mesma chave por conceito): tela do cliente (`Ritmo da meta`→title_ritmo, `Faturado`→kpi_faturado, `Previsionado`→kpi_previsionado, `Meta do mês`→metric_meta_mes, `Meta/dia`→metric_meta_dia) e cards de vendedor/cliente-row (`Faturado`/`Meta/dia`). Novo `metric_saldo_mes` ("Saldo/mês (R$)") exibido na tela do cliente = max(0, meta−faturado). ConfigProvider revalida (staleTime 0 + refetchOnMount/onWindowFocus) para refletir mudanças sem reload.
 - P2: migrar `shadow*` → `boxShadow`; limpar estilos órfãos em dashboard.tsx.
-- P2 (backlog anterior): contato rápido (WhatsApp), metas em massa, exportar CRM, gráfico de produtos por cliente, pódio de vendedores.
+- P2 (backlog anterior): contato rápido (WhatsApp), metas em massa, gráfico de produtos por cliente, pódio de vendedores.
+
+### Exportar CRM (2026-06) — implementado
+- Tela CRM (`/crm`) ganhou botão "Exportar" (ao lado da contagem de clientes) que gera um CSV da lista **filtrada** (respeita cidade/cliente/status/busca).
+- Colunas: Rank, Código, Cliente, CNPJ, Cidade, UF, Dias sem compra, Status, Movimento, Faturamento 12m.
+- Cross-platform: helper `src/lib/export-csv.ts`. Web dispara download; nativo grava no cache (expo-file-system) e abre o compartilhamento (expo-sharing). CSV com BOM (acentos no Excel) e delimitador ";" (padrão pt-BR).
 
 ### Integração externa — atualização de contrato (Audax CRM API / SGO)
 - Nova base URL/chave já em backend/.env (DW_API_URL=https://audaxccrm.duckdns.org:9443, DW_API_KEY).
@@ -111,3 +116,9 @@ Ver /app/memory/test_credentials.md
 - Bug do Refresh (vendedor "Falha ao atualizar dados") CORRIGIDO: POST /api/sync agora roda em background (retorna 200 na hora); connect timeout do dw_client = 8s. Testado pelo testing agent (iteration_7.json / test_sync_bugfix.py).
 - Documento de integração `/app/memory/CLIENTE_DETALHE_INTEGRACAO.md` EXPANDIDO com as respostas do usuário: seção 7 (spec para a equipe da API: endpoint de itens por pedido/dia com `tipo` surfaçado/acabado, campo de classificação, janelas do Top produtos, regras de reconciliação devolução/CFOP, relação família↔código, meta só no mês atual, performance porta 9443) e seção 8 (perguntas abertas para a API).
 - Bloco construível com dados em cache (indicadores mês, média, tendência, faturamento por dia com meta diária, seleção de mês) AGUARDANDO decisão do usuário (msg de escopo). Bloco de produtos bloqueado até a API criar os endpoints/estabilizar a porta 9443.
+
+### Ajustes tela do cliente (2026-09) — implementados
+- Cabeçalho: nome fantasia (título) + razão social (subtítulo pequeno) + badge de status colorido (Ativo/Pré-inativo/Inativo) no canto superior direito, reutilizando STATUS_META do CRM.
+- Faturamento por dia: apenas dias úteis (+ dias não úteis com faturamento); linha de meta diária CONTÍNUA (overlay horizontal) atravessando o gráfico; removida a barra de rolagem (showsHorizontalScrollIndicator=false, só toque).
+- Serviços (Montagem/Serviço/Mão de obra) filtrados das listas de produtos (isService) em "Produtos do dia" e "Top produtos".
+- Robustez/performance: GET /api/clients/{cod} não bloqueia mais. Dinheiro (mês/dia/recentes) vem do compras_f já sincronizado (compacto {d,v}) → instantâneo. Itens/pedidos detalhados (tipos, produtos) vêm de db.client_cache atualizado em SEGUNDO PLANO (create_task); se a API pesada estiver lenta/fora (porta 9443), a tela abre na hora e as seções de produtos ficam vazias (sem dados fictícios) até o cache popular. dw_client _TIMEOUT=(8,20).

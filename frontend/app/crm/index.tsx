@@ -1,14 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiFetch } from "@/src/api/client";
 import { Icon, IconName } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
 import { SelectDropdown } from "@/src/components/select-dropdown";
-import { formatPct } from "@/src/lib/format";
+import { formatBRL, formatPct } from "@/src/lib/format";
+import { buildCsv, exportCsv } from "@/src/lib/export-csv";
 import { fonts } from "@/src/typography";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -32,6 +33,13 @@ const STATUS_META: Record<string, { label: string; tone: "success" | "warning" |
   ATIVO: { label: "Ativo", tone: "success" },
   PRE_INATIVO: { label: "Pré-inativo", tone: "warning" },
   INATIVO: { label: "Inativo", tone: "error" },
+};
+
+const MOVIMENTO_LABEL: Record<string, string> = {
+  subiu: "Subiu",
+  desceu: "Desceu",
+  sumiu: "Sumiu",
+  novo: "Novo",
 };
 
 function onlyDigits(s: string) {
@@ -107,6 +115,49 @@ export default function CrmScreen() {
 
   const toggleStatus = (s: string) => setStatus((prev) => (prev === s ? "TODOS" : s));
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    if (!filtered.length || exporting) return;
+    setExporting(true);
+    try {
+      const headers = [
+        "Rank",
+        "Código",
+        "Cliente",
+        "CNPJ",
+        "Cidade",
+        "UF",
+        "Dias sem compra",
+        "Status",
+        "Movimento",
+        "Faturamento 12m",
+      ];
+      const rows = filtered.map((c) => [
+        c.rank ?? "",
+        c.cod_cliente,
+        c.nome,
+        c.cnpj_digits,
+        c.cidade,
+        c.uf ?? "",
+        c.dias_sem_compra ?? "",
+        STATUS_META[c.status]?.label ?? c.status,
+        MOVIMENTO_LABEL[c.movimento] ?? "",
+        formatBRL(c.faturamento_12m, false),
+      ]);
+      const csv = buildCsv(headers, rows);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const shared = await exportCsv(`crm_byvision_${stamp}.csv`, csv);
+      if (Platform.OS !== "web" && !shared) {
+        Alert.alert("Exportar CRM", "Compartilhamento indisponível neste dispositivo.");
+      }
+    } catch {
+      Alert.alert("Exportar CRM", "Não foi possível exportar a lista. Tente novamente.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const header = <LogoHeader title="CRM & Ranking" onBack={() => router.back()} />;
 
   if (isLoading) {
@@ -178,6 +229,24 @@ export default function CrmScreen() {
             <Icon name="close-circle" size={18} color={colors.muted} />
           </Pressable>
         )}
+      </View>
+
+      {/* Barra de resultados + exportar */}
+      <View style={styles.resultsBar}>
+        <Text style={styles.resultsCount}>{`${filtered.length} cliente${filtered.length === 1 ? "" : "s"}`}</Text>
+        <Pressable
+          style={[styles.exportBtn, (!filtered.length || exporting) && styles.exportBtnDisabled]}
+          onPress={handleExport}
+          disabled={!filtered.length || exporting}
+          testID="crm-export"
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color={colors.onBrandPrimary} />
+          ) : (
+            <Icon name="tray-arrow-down" size={16} color={colors.onBrandPrimary} />
+          )}
+          <Text style={styles.exportText}>Exportar</Text>
+        </Pressable>
       </View>
 
       {/* Cabeçalho da tabela */}
@@ -344,6 +413,20 @@ const useStyles = makeStyles((c) => ({
   summaryLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: c.onSurfaceSecondary },
   summaryValue: { fontFamily: fonts.numBold, fontSize: 24, color: c.onSurface },
   summarySub: { fontFamily: fonts.numMedium, fontSize: 12, color: c.muted },
+
+  resultsBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
+  resultsCount: { fontFamily: fonts.semibold, fontSize: 13, color: c.onSurfaceSecondary },
+  exportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: c.brandPrimary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  exportBtnDisabled: { opacity: 0.5 },
+  exportText: { fontFamily: fonts.bold, fontSize: 13, color: c.onBrandPrimary },
 
   tableHead: {
     flexDirection: "row",

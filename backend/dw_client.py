@@ -27,7 +27,7 @@ DW_RESP_ID = os.environ["DW_RESP_ID"]
 VENDEDOR_COD = int(os.environ["VENDEDOR_COD"])
 
 _HEADERS = {"X-API-Key": DW_API_KEY}
-_TIMEOUT = (8, 30)  # (connect, read) — connect curto p/ falhar rapido em host instavel
+_TIMEOUT = (8, 20)  # (connect, read) — curto p/ falhar rápido em host instável
 
 
 def _get(path: str, params: dict | None = None):
@@ -131,6 +131,32 @@ def get_compras(cod: str, desde: str) -> list[dict]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("compras falhou para %s: %s", cod, exc)
         return []
+
+
+def get_compras_itens(cod: str, desde: str) -> list[dict]:
+    """Itens por pedido/dia (endpoint /clientes/{cod}/compras-itens), paginando.
+
+    Retorna item a item com id_pedido, data_baixa (dia), familia_produto,
+    codigo_chave, sku, tipo (SURFACADO/ACABADO), grupo, marca, quantidade, valor.
+    """
+    out: list[dict] = []
+    page = 1
+    while True:
+        try:
+            data = _get(f"/clientes/{cod}/compras-itens", {"desde": desde, "page_size": 500, "page": page})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("compras-itens falhou para %s: %s", cod, exc)
+            break
+        itens = data.get("itens", []) if isinstance(data, dict) else data
+        if not itens:
+            break
+        out.extend(itens)
+        if len(itens) < 500:
+            break
+        page += 1
+        if page > 30:  # guard-rail
+            break
+    return out
 
 
 def faturamento_periodo(cod: str, desde: str, ate: str) -> float:

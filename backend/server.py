@@ -568,26 +568,93 @@ async def client_detail(cod: str, user=Depends(current_user)):
     meta = float(meta_doc["meta"]) if meta_doc else 0.0
     period = await get_period()
 
-    # historico de compras (ao vivo, ultimos ~8 meses)
-    desde = period.get("ref_year", datetime.now().year)
+    # historico de compras (ao vivo, ultimos ~13 meses p/ top produtos 12m + tendencia)
     ano = int(period.get("ref_year", datetime.now().year))
     mes = int(period.get("ref_month", datetime.now().month))
-    start_ano = ano if mes > 8 else ano - 1
-    start_mes = mes - 7 if mes > 7 else mes + 5
-    desde_str = f"{start_ano}-{start_mes:02d}-01"
+    start_year, start_month = ano, mes - 12
+    while start_month <= 0:
+        start_month += 12
+        start_year -= 1
+    desde_str = f"{start_year}-{start_month:02d}-01"
 
-    compras = await asyncio.to_thread(dw.get_compras, str(cod), desde_str)
-    compras_f = [r for r in compras if str(r.get("situacao_pedido")) == "F"]
+    # A API externa (compras/compras-itens) é lenta/instável. Estratégia:
+    # - dinheiro (mês/dia/recentes) vem SEMPRE do compras_f já sincronizado (compacto {d,v}) → instantâneo
+    # - itens/pedidos detalhados (tipos, produtos) vêm de um cache por cliente,
+    #   atualizado em SEGUNDO PLANO. Nunca bloqueia a requisição.
+    async def _fetch_live_client(cod_s: str, desde: str):
+        try:
+            cp = await asyncio.to_thread(dw.get_compras, cod_s, desde)
+            it = await asyncio.to_thread(dw.get_compras_itens, cod_s, desde)
+            await db.client_cache.update_one(
+                {"_id": cod_s},
+                {"$set": {"compras": cp, "itens": it, "at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("refresh cliente %s falhou: %s", cod_s, exc)
 
-    # agregacao mensal
+    compras_compact = c.get("compras_f") or []  # [{d, v}] já sincronizado
+
+    cache = await db.client_cache.find_one({"_id": str(cod)}, {"_id": 0})
+    compras_full = [r for r in (cache.get("compras") if cache else None) or [] if str(r.get("situacao_pedido")) == "F"]
+    itens_f = [r for r in (cache.get("itens") if cache else None) or [] if str(r.get("situacao_pedido")) == "F"]
+
+    stale = True
+    if cache and cache.get("at"):
+        try:
+            stale = (datetime.now(timezone.utc) - datetime.fromisoformat(cache["at"])).total_seconds() > 3 * 3600
+        except Exception:  # noqa: BLE001
+            stale = True
+    if stale:
+        asyncio.create_task(_fetch_live_client(str(cod), desde_str))
+
+    tipos_por_pedido: dict = {}
+    for it in itens_f:
+        pid = it.get("id_pedido")
+        t = (it.get("tipo") or "").strip().upper()
+        if t:
+            tipos_por_pedido.setdefault(pid, set()).add(t)
+
+    itens_out = [{
+        "id_pedido": it.get("id_pedido"),
+        "data": str(it.get("data_baixa", ""))[:10],
+        "familia": it.get("familia_produto"),
+        "codigo": str(it.get("codigo_chave") or it.get("sku") or ""),
+        "sku": it.get("sku"),
+        "tipo": ((it.get("tipo") or "").strip().upper() or None),
+        "grupo": it.get("grupo"),
+        "marca": it.get("marca"),
+        "qtd": float(it.get("quantidade") or 0),
+        "valor": round(float(it.get("valor") or 0), 2),
+    } for it in itens_f]
+
+    # pedidos (order-level): prefere o cache detalhado (id_pedido + tipos);
+    # senão usa o compacto já sincronizado (dinheiro confiável, sem tipos)
+    if compras_full:
+        pedidos_out = [{
+            "id_pedido": r.get("id_pedido"),
+            "data": str(r.get("data_baixa", ""))[:10],
+            "valor": round(float(r.get("valor") or 0), 2),
+            "tipos": sorted(tipos_por_pedido.get(r.get("id_pedido"), [])),
+        } for r in compras_full]
+    else:
+        pedidos_out = [{
+            "id_pedido": i,
+            "data": str(r.get("d", ""))[:10],
+            "valor": round(float(r.get("v") or 0), 2),
+            "tipos": [],
+        } for i, r in enumerate(compras_compact)]
+
+    # agregacao mensal (a partir dos pedidos)
     mensal: dict[str, float] = {}
-    for r in compras_f:
-        m = str(r.get("data_baixa", ""))[:7]
-        mensal[m] = round(mensal.get(m, 0.0) + float(r.get("valor") or 0), 2)
+    for p in pedidos_out:
+        m = p["data"][:7]
+        if m:
+            mensal[m] = round(mensal.get(m, 0.0) + p["valor"], 2)
     mensal_list = [{"mes": k, "valor": v} for k, v in sorted(mensal.items())]
 
     faturado = float(c.get("faturado_mes") or 0.0)
-    recent = sorted(compras_f, key=lambda r: str(r.get("data_baixa", "")), reverse=True)[:40]
+    recent = sorted(pedidos_out, key=lambda r: r["data"], reverse=True)[:40]
 
     # dias uteis do mes de referencia ajustados por feriados cadastrados
     hol_cd = await _holiday_weekdays(ano, mes)
@@ -601,6 +668,7 @@ async def client_detail(cod: str, user=Depends(current_user)):
         total_bd_cd,
         max(0, int(period.get("dias_uteis_decorridos") or 0) - sum(1 for h in hol_cd if h <= as_of_cd)),
     )
+    ref_exp = round(elapsed_bd_cd / total_bd_cd, 4) if total_bd_cd else 1.0
 
     pace = compute_pace(meta, faturado, total_bd_cd, elapsed_bd_cd)
 
@@ -619,6 +687,12 @@ async def client_detail(cod: str, user=Depends(current_user)):
                     "ticket_medio": ticket_medio, **pace},
         "compras_mensais": mensal_list,
         "compras_recentes": recent,
+        "pedidos": pedidos_out,
+        "itens": itens_out,
+        "meta_mensal": meta,
+        "ref_month": f"{ano}-{mes:02d}",
+        "ref_exp": ref_exp,
+        "dias_uteis_ref": total_bd_cd,
         "period": period,
     }
 

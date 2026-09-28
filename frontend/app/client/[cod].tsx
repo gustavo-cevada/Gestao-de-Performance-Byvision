@@ -4,10 +4,9 @@ import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiFetch } from "@/src/api/client";
-import { BarChart } from "@/src/components/bar-chart";
+import { ClientAnalytics, ItemVenda, Pedido } from "@/src/components/client-analytics";
 import { Icon, IconName } from "@/src/components/icon";
 import { LogoHeader } from "@/src/components/logo-header";
-import { PurchaseBars } from "@/src/components/purchase-bars";
 import { usePaceTone, useLabels } from "@/src/context/config";
 import { formatBRL, formatPct } from "@/src/lib/format";
 import { fonts } from "@/src/typography";
@@ -16,7 +15,18 @@ import { makeStyles, useTheme } from "@/src/theme";
 type Detail = {
   cliente: any;
   compras_mensais: { mes: string; valor: number }[];
-  compras_recentes: { data_baixa: string; valor: number; id_pedido: number }[];
+  pedidos: Pedido[];
+  itens: ItemVenda[];
+  meta_mensal: number;
+  ref_month: string;
+  ref_exp: number;
+  dias_uteis_ref: number;
+};
+
+const STATUS_META: Record<string, { label: string; tone: "success" | "warning" | "error" }> = {
+  ATIVO: { label: "Ativo", tone: "success" },
+  PRE_INATIVO: { label: "Pré-inativo", tone: "warning" },
+  INATIVO: { label: "Inativo", tone: "error" },
 };
 
 export default function ClientDetail() {
@@ -69,21 +79,33 @@ export default function ClientDetail() {
   const barColor = paceTone(ritmo, meta > 0);
   const saldoMes = Math.max(0, meta - faturado);
 
+  const st = STATUS_META[cl.status_crm] ?? STATUS_META.ATIVO;
+  const stColor = st.tone === "success" ? colors.success : st.tone === "warning" ? colors.warning : colors.error;
+  const fantasia = (cl.nome_fantasia || cl.nome || "").trim();
+  const razao = (cl.razao_social || "").trim();
+
   return (
     <View style={styles.screen}>
       {header}
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 24 }}>
         {/* Cabeçalho do cliente */}
         <View style={styles.card}>
-          <Text style={styles.name}>{cl.nome}</Text>
+          <View style={styles.headerTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name}>{fantasia}</Text>
+              {!!razao && razao.toUpperCase() !== fantasia.toUpperCase() && (
+                <Text style={styles.razao} numberOfLines={2}>{razao}</Text>
+              )}
+            </View>
+            <View style={[styles.statusBadge, { borderColor: stColor }]}>
+              <View style={[styles.statusDot, { backgroundColor: stColor }]} />
+              <Text style={[styles.statusText, { color: stColor }]}>{st.label}</Text>
+            </View>
+          </View>
           <Text style={styles.cnpj}>{cl.cnpj_cpf ? `CNPJ: ${cl.cnpj_cpf}` : "—"}</Text>
           <View style={styles.chipsRow}>
             <Tag icon="map-marker-outline" text={`${cl.cidade ?? "-"} / ${cl.uf ?? ""}`} />
             <Tag icon="pound" text={String(cl.cod_cliente)} />
-            <Tag
-              icon={cl.status_comercial === "ATIVO" ? "check-circle-outline" : "close-circle-outline"}
-              text={cl.status_comercial ?? "-"}
-            />
           </View>
         </View>
 
@@ -144,21 +166,16 @@ export default function ClientDetail() {
           )}
         </View>
 
-        {/* Histórico mensal */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Faturamento por mês</Text>
-          <BarChart data={data.compras_mensais} />
-        </View>
-
-        {/* Compras recentes */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Compras recentes</Text>
-          {data.compras_recentes.length === 0 ? (
-            <Text style={styles.muted}>Nenhuma compra faturada recente.</Text>
-          ) : (
-            <PurchaseBars data={data.compras_recentes} limit={12} />
-          )}
-        </View>
+        {/* Analytics: faturamento mês/dia, produtos, top produtos e compras recentes */}
+        <ClientAnalytics
+          mensais={data.compras_mensais}
+          pedidos={data.pedidos}
+          itens={data.itens}
+          metaMensal={data.meta_mensal}
+          refMonth={data.ref_month}
+          refExp={data.ref_exp}
+          diasUteisRef={data.dias_uteis_ref}
+        />
       </ScrollView>
     </View>
   );
@@ -200,6 +217,19 @@ const useStyles = makeStyles((c) => ({
     gap: 12,
   },
   name: { fontFamily: fonts.bold, fontSize: 18, color: c.onSurface },
+  razao: { fontFamily: fonts.regular, fontSize: 12, color: c.muted, marginTop: 2 },
+  headerTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { fontFamily: fonts.bold, fontSize: 12 },
   cnpj: { fontFamily: fonts.numMedium, fontSize: 12, color: c.muted },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: {
